@@ -16,7 +16,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Installation paths
-INSTALL_DIR="/home/pi/RPIFrame"
+INSTALL_DIR="/home/$USER/RPIFrame"
 SERVICE_NAME="rpiframe.service"
 CURRENT_DIR=$(pwd)
 
@@ -37,6 +37,46 @@ print_error() {
 
 print_info() {
     echo -e "${YELLOW}→ $1${NC}"
+}
+
+troubleshoot_display() {
+    print_header "Display Troubleshooting Information"
+    
+    echo "Collecting system information..."
+    echo
+    
+    # Check kernel modules
+    print_info "Video/DRM kernel modules:"
+    lsmod | grep -E "(drm|vc4|v3d)" || echo "No DRM modules loaded"
+    echo
+    
+    # Check display detection
+    print_info "Display detection:"
+    if [ -d /sys/class/drm ]; then
+        ls -la /sys/class/drm/
+    else
+        echo "No DRM subsystem found"
+    fi
+    echo
+    
+    # Check for DSI in dmesg
+    print_info "DSI-related kernel messages:"
+    dmesg | grep -i dsi | tail -10 || echo "No DSI messages found"
+    echo
+    
+    # Check current config
+    print_info "Current display configuration:"
+    if [ -f /boot/firmware/config.txt ]; then
+        grep -E "(dtoverlay|display|gpu_mem|hdmi)" /boot/firmware/config.txt | grep -v "^#"
+    elif [ -f /boot/config.txt ]; then
+        grep -E "(dtoverlay|display|gpu_mem|hdmi)" /boot/config.txt | grep -v "^#"
+    fi
+    echo
+    
+    # Check permissions
+    print_info "User groups:"
+    groups $USER
+    echo
 }
 
 check_raspberry_pi() {
@@ -119,20 +159,31 @@ configure_display() {
     sudo cp $CONFIG_FILE ${CONFIG_FILE}.backup.$(date +%Y%m%d-%H%M%S)
     print_info "Backed up $CONFIG_FILE"
     
-    # Check if display settings already configured
-    if grep -q "dtoverlay=vc4.*v3d" $CONFIG_FILE; then
-        print_info "Display already configured"
+    # Remove conflicting display overlays first
+    print_info "Checking for conflicting display overlays..."
+    sudo sed -i 's/^dtoverlay=vc4-fkms-v3d/#dtoverlay=vc4-fkms-v3d/g' $CONFIG_FILE
+    sudo sed -i 's/^dtoverlay=vc4-kms-v3d/#dtoverlay=vc4-kms-v3d/g' $CONFIG_FILE
+    
+    # Check if KMS driver is already configured
+    if grep -q "^dtoverlay=vc4-kms-v3d" $CONFIG_FILE; then
+        print_info "Display already configured with KMS driver"
     else
         print_info "Adding display configuration for Hosyond 7-inch DSI..."
+        
+        # Add new configuration
         sudo bash -c "cat >> $CONFIG_FILE << EOF
 
 # RPIFrame Display Configuration for Hosyond 7-inch DSI
 # Display: 800x480, FT5426 touch controller, MIPI DSI interface
-dtoverlay=vc4-fkms-v3d
-max_framebuffers=2
+# Using KMS driver for better DSI support
+dtoverlay=vc4-kms-v3d
 display_auto_detect=1
 hdmi_force_hotplug=0
 gpu_mem=128
+
+# DSI display specific settings
+ignore_lcd=0
+disable_touchscreen=0
 
 # Optional: PWM backlight control (uncomment if hardware modified)
 # gpio=18=op,pu
@@ -145,6 +196,14 @@ EOF"
     if ! grep -q "i2c-dev" /etc/modules; then
         echo "i2c-dev" | sudo tee -a /etc/modules > /dev/null
         print_success "Added i2c-dev module"
+    fi
+    
+    # Check DSI display detection
+    print_info "Checking for DSI display..."
+    if ls /sys/class/drm/card*-DSI-* 2>/dev/null; then
+        print_success "DSI display interface detected"
+    else
+        print_info "DSI display not detected yet (will check after reboot)"
     fi
 }
 
@@ -222,25 +281,71 @@ EOF
 
 test_display() {
     print_header "Testing Display"
-    print_info "Running display test..."
+    
+    # Check for display devices first
+    print_info "Checking display devices..."
+    if ls /dev/dri/card* 2>/dev/null; then
+        print_success "DRM devices found:"
+        ls -la /dev/dri/card*
+    else
+        print_error "No DRM devices found!"
+        print_info "Display driver may not be loaded properly"
+    fi
+    
+    # Check for framebuffer
+    if ls /dev/fb* 2>/dev/null; then
+        print_success "Framebuffer devices found:"
+        ls -la /dev/fb*
+    else
+        print_error "No framebuffer devices found!"
+    fi
+    
+    # Try different SDL drivers
+    print_info "Testing SDL video drivers..."
     
     cd $INSTALL_DIR
     source venv/bin/activate
-    source .env
     
-    # Run test with timeout
-    timeout 30s python test_display.py || true
+    # Test with KMS driver first (preferred for DSI)
+    print_info "Testing with KMS/DRM driver..."
+    export SDL_VIDEODRIVER=kmsdrm
+    timeout 10s python test_display.py 2>/dev/null || true
     
-    read -p "Did you see the test patterns? (y/N) " -n 1 -r
+    read -p "Did you see the test with KMS driver? (y/N) " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        print_success "Display test successful"
+        print_success "KMS/DRM driver works!"
+        echo "SDL_VIDEODRIVER=kmsdrm" > $INSTALL_DIR/.env
         return 0
-    else
-        print_error "Display test failed"
-        print_info "Check troubleshooting section in deployment.md"
-        return 1
     fi
+    
+    # Try with framebuffer driver
+    print_info "Testing with framebuffer driver..."
+    export SDL_VIDEODRIVER=fbdev
+    export SDL_FBDEV=/dev/fb0
+    timeout 10s python test_display.py 2>/dev/null || true
+    
+    read -p "Did you see the test with framebuffer driver? (y/N) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        print_success "Framebuffer driver works!"
+        cat > $INSTALL_DIR/.env << EOF
+SDL_VIDEODRIVER=fbdev
+SDL_FBDEV=/dev/fb0
+EOF
+        return 0
+    fi
+    
+    # Display didn't work
+    print_error "Display test failed with all drivers"
+    print_info "Troubleshooting steps:"
+    echo "1. Check DSI cable connection (contacts facing down)"
+    echo "2. Verify display is powered properly"
+    echo "3. Run: dmesg | grep -i dsi"
+    echo "4. Check /boot/firmware/config.txt settings"
+    echo "5. Try rebooting if display config was just changed"
+    
+    return 1
 }
 
 create_systemd_service() {
@@ -399,7 +504,14 @@ main() {
     read -p "Test display now? (Y/n) " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-        test_display
+        if ! test_display; then
+            # Display test failed, offer troubleshooting
+            read -p "Run display troubleshooting? (Y/n) " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+                troubleshoot_display
+            fi
+        fi
     fi
     
     # Setup service
