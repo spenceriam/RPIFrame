@@ -107,14 +107,13 @@ class SimpleSlideshow:
             self.scan_photos()
         
         # Kill any existing fbi processes
-        subprocess.run(['sudo', 'pkill', 'fbi'], capture_output=True)
+        subprocess.run(['pkill', 'fbi'], capture_output=True)
         time.sleep(1)
         
         # Build fbi command
         interval = self.config['display']['slideshow_interval']
         cmd = [
-            'sudo', 'fbi',
-            '-T', '1',  # Use tty1
+            'fbi',
             '-d', '/dev/fb0',  # Framebuffer device
             '-noverbose',
             '-a',  # Autozoom
@@ -160,8 +159,7 @@ class SimpleSlideshow:
                     
                     # Rebuild command with new photo list
                     cmd = [
-                        'sudo', 'fbi',
-                        '-T', '1',
+                        'fbi',
                         '-d', '/dev/fb0',
                         '-noverbose',
                         '-a',
