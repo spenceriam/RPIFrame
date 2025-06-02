@@ -15,24 +15,45 @@ logger = logging.getLogger(__name__)
 def test_display():
     """Test basic display functionality"""
     try:
+        # Check current SDL driver
+        current_driver = os.environ.get('SDL_VIDEODRIVER', 'not set')
+        logger.info(f"Current SDL_VIDEODRIVER: {current_driver}")
+        
         # Initialize Pygame
         pygame.init()
         
-        # Set up display
-        # Use SDL environment variables for DSI display
-        os.environ['SDL_FBDEV'] = '/dev/fb0'
+        # Try to initialize display subsystem
+        try:
+            pygame.display.init()
+            logger.info("Display subsystem initialized")
+        except pygame.error as e:
+            logger.error(f"Failed to initialize display subsystem: {e}")
+            # Try with dummy driver for testing
+            os.environ['SDL_VIDEODRIVER'] = 'dummy'
+            pygame.display.init()
+            logger.warning("Using dummy video driver for testing")
         
         # Get display info
         info = pygame.display.Info()
         logger.info(f"Display info: {info.current_w}x{info.current_h}")
+        
+        # Get current driver
+        driver = pygame.display.get_driver()
+        logger.info(f"Using driver: {driver}")
         
         # Create display (try fullscreen first, fall back to windowed)
         try:
             screen = pygame.display.set_mode((800, 480), pygame.FULLSCREEN)
             logger.info("Created fullscreen display")
         except:
-            screen = pygame.display.set_mode((800, 480))
-            logger.info("Created windowed display")
+            try:
+                screen = pygame.display.set_mode((800, 480))
+                logger.info("Created windowed display")
+            except pygame.error as e:
+                logger.error(f"Failed to create display: {e}")
+                # Try smaller size
+                screen = pygame.display.set_mode((640, 480))
+                logger.warning("Created smaller display (640x480)")
         
         pygame.display.set_caption("RPIFrame Display Test")
         
