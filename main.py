@@ -49,11 +49,17 @@ def start_web_server(port=5000, debug=False):
 def start_display_slideshow():
     """Start the display slideshow"""
     try:
-        logger.info("Starting display slideshow")
+        logger.info("Starting display slideshow with pygame")
         from display_slideshow import main as display_main
         display_main()
     except Exception as e:
-        logger.error(f"Error starting display slideshow: {e}")
+        logger.error(f"Error starting pygame display slideshow: {e}")
+        logger.info("Falling back to simple framebuffer slideshow")
+        try:
+            from simple_slideshow import main as simple_main
+            simple_main()
+        except Exception as e2:
+            logger.error(f"Error starting simple slideshow: {e2}")
 
 def stop_services():
     """Stop all running services"""
