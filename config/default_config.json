@@ -1,0 +1,27 @@
+{
+  "display": {
+    "resolution": {
+      "width": 800,
+      "height": 480
+    },
+    "rotation_interval_minutes": 5,
+    "brightness": 100,
+    "enable_transitions": true,
+    "transition_duration": 1.0,
+    "enable_touch": true,
+    "image_rotation": 0,
+    "fit_mode": "contain"
+  },
+  "photos": {
+    "directory": "static/images/photos",
+    "supported_formats": ["jpg", "jpeg", "png", "bmp", "gif", "heic", "heif"],
+    "thumbnail_size": 200,
+    "max_dimension": 1920
+  },
+  "system": {
+    "timezone": "UTC",
+    "web_port": 5000,
+    "debug_mode": false,
+    "log_file": "rpiframe.log"
+  }
+}

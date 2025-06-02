@@ -1,0 +1,18 @@
+# RPIFrame DSI Photo Frame Requirements
+# Python dependencies for Raspberry Pi 4 with DSI touchscreen
+
+# Web Framework
+Flask==3.0.0
+Werkzeug==3.0.1
+
+# Image Processing
+Pillow==10.2.0
+
+# Display and Touch Interface
+pygame==2.5.2
+
+# System utilities
+psutil==5.9.6
+
+# Optional: For better performance
+gunicorn==21.2.0
