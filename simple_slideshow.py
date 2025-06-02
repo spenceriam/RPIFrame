@@ -12,7 +12,10 @@ import subprocess
 import signal
 import logging
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 class SimpleSlideshow:
@@ -63,21 +66,34 @@ class SimpleSlideshow:
     def scan_photos(self):
         """Scan photos directory for images"""
         self.photos = []
-        photo_dir = self.config['photos']['directory']
+        
+        # Get absolute path to photos directory
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        photo_dir = os.path.join(script_dir, self.config['photos']['directory'])
         
         if not os.path.exists(photo_dir):
             os.makedirs(photo_dir)
             logger.warning(f"Created photos directory: {photo_dir}")
             return
         
+        logger.info(f"Scanning photos in: {photo_dir}")
+        
         for ext in self.config['photos']['allowed_extensions']:
             pattern = os.path.join(photo_dir, f'*.{ext}')
-            self.photos.extend(glob.glob(pattern))
+            found = glob.glob(pattern)
+            if found:
+                logger.info(f"Found {len(found)} .{ext} files")
+            self.photos.extend(found)
             pattern = os.path.join(photo_dir, f'*.{ext.upper()}')
-            self.photos.extend(glob.glob(pattern))
+            found = glob.glob(pattern)
+            if found:
+                logger.info(f"Found {len(found)} .{ext.upper()} files")
+            self.photos.extend(found)
         
+        # Convert all paths to absolute paths
+        self.photos = [os.path.abspath(p) for p in self.photos]
         self.photos.sort()
-        logger.info(f"Found {len(self.photos)} photos")
+        logger.info(f"Found {len(self.photos)} total photos")
     
     def run(self):
         """Run the slideshow"""
@@ -104,25 +120,71 @@ class SimpleSlideshow:
             '-a',  # Autozoom
             '-t', str(interval),  # Time between images
             '-blend', '500',  # Blend time in ms
+            '-1',  # Loop forever (don't exit after last image)
             '--'  # End of options
         ] + self.photos
         
         logger.info(f"Starting slideshow with {len(self.photos)} photos")
         logger.info(f"Slideshow interval: {interval} seconds")
         
+        # Log the command for debugging
+        logger.info(f"Running command: {' '.join(cmd[:10])}... [{len(self.photos)} photos]")
+        
         try:
-            # Start fbi
-            self.fbi_process = subprocess.Popen(cmd)
-            logger.info("Slideshow started successfully")
+            # Start fbi with error output
+            self.fbi_process = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+            logger.info("Slideshow process started")
             
-            # Wait for process to complete or be interrupted
-            self.fbi_process.wait()
+            # Monitor the process
+            while self.running:
+                # Check if process is still running
+                poll_result = self.fbi_process.poll()
+                if poll_result is not None:
+                    # Process has terminated
+                    stdout, stderr = self.fbi_process.communicate()
+                    logger.error(f"fbi process exited with code {poll_result}")
+                    if stderr:
+                        logger.error(f"fbi stderr: {stderr.decode('utf-8', errors='ignore')}")
+                    if stdout:
+                        logger.info(f"fbi stdout: {stdout.decode('utf-8', errors='ignore')}")
+                    
+                    # Restart after a delay
+                    logger.info("Restarting slideshow in 5 seconds...")
+                    time.sleep(5)
+                    
+                    # Rescan photos in case directory changed
+                    self.scan_photos()
+                    if not self.photos:
+                        logger.error("No photos available, exiting")
+                        break
+                    
+                    # Rebuild command with new photo list
+                    cmd = [
+                        'sudo', 'fbi',
+                        '-T', '1',
+                        '-d', '/dev/fb0',
+                        '-noverbose',
+                        '-a',
+                        '-t', str(interval),
+                        '-blend', '500',
+                        '-1',  # Loop forever
+                        '--'
+                    ] + self.photos
+                    
+                    # Start new process
+                    self.fbi_process = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+                    logger.info("Slideshow restarted")
+                else:
+                    # Process is running, wait a bit
+                    time.sleep(1)
             
         except KeyboardInterrupt:
             logger.info("Slideshow interrupted")
             self.stop()
         except Exception as e:
             logger.error(f"Error running slideshow: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             self.stop()
     
     def stop(self):
@@ -140,6 +202,10 @@ class SimpleSlideshow:
         """Create a test image if no photos exist"""
         try:
             from PIL import Image, ImageDraw, ImageFont
+            
+            # Get absolute path to photos directory
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            photo_dir = os.path.join(script_dir, self.config['photos']['directory'])
             
             # Create test image
             img = Image.new('RGB', (800, 480), color='red')
@@ -166,10 +232,11 @@ class SimpleSlideshow:
             
             draw.text((x, y), text, fill='white', font=font, align='center')
             
-            # Save test image
-            os.makedirs('photos', exist_ok=True)
-            img.save('photos/test_image.jpg')
-            logger.info("Created test image")
+            # Save test image with absolute path
+            os.makedirs(photo_dir, exist_ok=True)
+            test_image_path = os.path.join(photo_dir, 'test_image.jpg')
+            img.save(test_image_path)
+            logger.info(f"Created test image at: {test_image_path}")
             
         except Exception as e:
             logger.error(f"Could not create test image: {e}")
