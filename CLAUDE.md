@@ -4,117 +4,127 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**RPIFrame** is a full-color digital photo frame application for Raspberry Pi 4 with Hosyond 7-inch DSI touchscreen. It was adapted from the InkFrame project (originally designed for e-ink displays) to work with modern DSI displays, providing full-color photo display with web-based management and touch navigation.
+**RPIFrame** is a full-color digital photo frame application for Raspberry Pi 4 with Hosyond 7-inch DSI touchscreen. Originally adapted from the InkFrame project, it has been completely refactored with a modern, modular architecture.
 
-## Current Status - COMPLETED ✅
+## Current Status - REFACTORED 🚀
 
-### What Was Accomplished
-The complete RPIFrame DSI Photo Frame implementation has been finished and committed locally. All phases of the original development plan have been completed:
+### Recent Major Refactor (December 2024)
+The entire project has been refactored to address critical issues:
 
-**✅ Phase 1: Analysis & Initial Setup**
-- Analyzed InkFrame web server implementation and routes
-- Understood photo uploading mechanism and storage  
-- Identified image processing requirements (removed e-ink specific code)
-- Copied and adapted core components to root directory
+**✅ Complete Architecture Overhaul**
+- Migrated from scattered files to clean Python package structure (`rpiframe/`)
+- Unified configuration system replacing multiple conflicting configs
+- Proper dependency management with graceful degradation
+- Professional installation and setup scripts
 
-**✅ Phase 2: Core Functionality for DSI Display**
-- Implemented Pygame-based fullscreen slideshow (`display_slideshow.py`)
-- Configured for 800x480 Hosyond DSI display with FT5426 touch controller
-- Added full-color image handling (no dithering/quantization needed)
-- Integrated KMS/FKMS driver support for Pi OS Lite
+**✅ New Project Structure**
+```
+RPIFrame/
+├── rpiframe/              # Main Python package
+│   ├── __init__.py       # Package initialization
+│   ├── core.py           # Main orchestrator (PhotoFrame class)
+│   ├── config.py         # Unified configuration management
+│   ├── display.py        # Display manager with touch support
+│   ├── web.py            # Flask web server and API
+│   └── utils.py          # Common utilities
+├── run.py                 # New clean entry point
+├── setup.py              # Automated setup script
+├── stop_all.py           # Process management utility
+├── debug_photos.py       # Photo path debugging tool
+├── requirements-new.txt   # Updated dependencies
+├── README-new.md         # Updated documentation
+└── [legacy files]        # Old implementation (to be removed)
+```
 
-**✅ Phase 3: Web Interface & Features**
-- Adapted Flask web server (`app.py`) for DSI photo frame
-- Implemented photo upload, management, and configuration
-- Added image rotation controls and slideshow settings
-- Created responsive web interface (`templates/index.html`)
+**✅ Key Improvements**
+- Fixed all import errors and module conflicts
+- Added port conflict detection and handling
+- Robust error handling with informative messages
+- Proper absolute path handling for photos
+- Clean process management and shutdown
+- Comprehensive logging system
 
-**✅ Phase 4: Touchscreen Integration**
-- Added Pygame touch event handling in slideshow
-- Implemented swipe gesture navigation (left/right)
-- Configured for FT5426 capacitive touch controller
-
-**✅ Phase 5: Documentation & Deployment**
-- Created comprehensive README.md
-- Wrote detailed deployment guide for Pi OS Lite (64-bit)
-- Built automated installation script (`install.sh`)
-- Added validation checklist and deployment plan
-- Included hardware manual for reference
+### Known Issues Being Addressed
+1. **Photo paths**: Fixed absolute path issues in web server
+2. **HEIC support**: Need to add conversion for Apple photos
+3. **Development workflow**: Should move to Pi for faster iteration
 
 ## Architecture
 
-The RPIFrame project follows a clean, modular architecture:
+### Core Components (Refactored)
 
-### Core Components
-- **`main.py`**: Orchestrates both web server and display slideshow as separate processes
-- **`app.py`**: Flask web application for photo management and settings
-- **`display_slideshow.py`**: Pygame-based fullscreen photo display with touch controls
-- **`install.sh`**: Automated installation script for Pi OS Lite
+#### `rpiframe/core.py` - PhotoFrame Class
+- Main orchestrator managing web and display processes
+- Process monitoring and restart capability
+- Port conflict detection
+- Platform detection (Pi vs development)
 
-### Key Features Implemented
-- 800×480 full-color photo display on DSI touchscreen
-- Web interface accessible from any device on network
-- Touch gesture navigation (swipe left/right for previous/next photo)
-- Configurable slideshow intervals and image rotation
-- Automatic thumbnail generation for web gallery
-- Systemd service integration for auto-start on boot
-- Optimized for headless Pi OS Lite (64-bit) operation
+#### `rpiframe/config.py` - Config Class
+- Centralized configuration management
+- Automatic default generation
+- Configuration validation
+- Easy get/set methods
 
-### Hardware Specifications (from manual)
-- **Display**: Hosyond 7-inch DSI IPS touchscreen
-- **Resolution**: 800×480 pixels  
-- **Touch Controller**: FT5426 capacitive (2-point touch on Raspbian)
-- **Interface**: MIPI DSI with RGB888
-- **Power**: 3.3V, maximum 510mA
-- **Included**: FPC cables, mounting hardware
+#### `rpiframe/display.py` - DisplayManager Class
+- Pygame-based slideshow with touch support
+- Graceful handling when pygame unavailable
+- EXIF rotation support
+- Multiple fit modes (contain/cover)
+
+#### `rpiframe/web.py` - WebServer Class
+- Flask-based photo management API
+- Fixed absolute path handling
+- Thumbnail generation
+- System status monitoring
+
+#### `run.py` - Entry Point
+- Clean command-line interface
+- Options: --web-only, --display-only, --config
+- Proper argument parsing
 
 ## Key Commands
 
 ### Development/Testing
 ```bash
-# Test display functionality
-python test_display.py
+# Setup and install dependencies
+python3 setup.py
 
-# Run web interface only (for development)
-python main.py --web-only --port 5000
+# Run web interface only (safe for development)
+python3 run.py --web-only
 
-# Run display only
-python main.py --display-only
+# Run full application (Pi only)
+python3 run.py
 
-# Run full application
-python main.py
+# Stop all processes
+python3 stop_all.py
+
+# Debug photo paths
+python3 debug_photos.py
+
+# Run with custom config
+python3 run.py --config custom.json
 ```
 
-### Deployment
+### Git Workflow
 ```bash
-# Automated installation on Pi OS Lite
-./install.sh
+# Current status: refactored code is pushed to GitHub
+# Latest commits:
+# - c1ab616: Fix broken image paths in web interface
+# - c8f66a5: Add port conflict detection and process management
+# - a20f425: Complete RPIFrame refactor
 
-# Manual service management
-sudo systemctl start rpiframe.service
-sudo systemctl stop rpiframe.service
-sudo systemctl status rpiframe.service
+# To sync on Raspberry Pi:
+git pull origin main
 
-# View logs
-sudo journalctl -u rpiframe.service -f
-tail -f logs/rpiframe.log
-```
-
-### Validation
-```bash
-# Quick validation check
-./validate.sh
-
-# Check service status
-sudo systemctl status rpiframe.service
-
-# Test web interface
-curl http://localhost:5000/api/system/status
+# After making changes on Pi:
+git add -A
+git commit -m "Description of changes"
+git push origin main
 ```
 
 ## Configuration
 
-### Display Configuration (`config.json`)
+### Unified Configuration (`config.json`)
 ```json
 {
   "display": {
@@ -122,117 +132,127 @@ curl http://localhost:5000/api/system/status
     "height": 480,
     "rotation": 0,
     "slideshow_interval": 60,
-    "transition_effect": "fade"
+    "fit_mode": "contain"
   },
   "photos": {
     "directory": "photos",
-    "allowed_extensions": ["png", "jpg", "jpeg", "gif", "bmp"],
-    "max_upload_size_mb": 50
+    "allowed_extensions": ["jpg", "jpeg", "png", "bmp", "gif"],
+    "max_upload_size_mb": 50,
+    "thumbnail_size": 200
   },
   "system": {
-    "web_port": 5000,
+    "enable_touch": true,
     "debug_mode": false,
-    "enable_touch": true
+    "log_level": "INFO"
+  },
+  "web": {
+    "host": "0.0.0.0",
+    "port": 5000
   }
 }
 ```
 
-### Boot Configuration (Pi OS Lite)
-For Hosyond 7-inch DSI display in `/boot/firmware/config.txt`:
-```ini
-# Enable FKMS (recommended for Pi 4)
-dtoverlay=vc4-fkms-v3d
-max_framebuffers=2
-display_auto_detect=1
-hdmi_force_hotplug=0
-gpu_mem=128
-```
+## Recommended Development Workflow
 
-## Current State & Next Steps
+### Moving Development to Raspberry Pi
 
-### Committed Locally ✅
-- **Commit Hash**: `5638ea0`
-- **Files**: 23 files committed
-- **Status**: Complete implementation ready for deployment
-
-### Still Needed ⏳
-1. **Push to GitHub**: Need to configure git credentials and push
+1. **Install Claude Code on Pi**:
    ```bash
-   git remote set-url origin https://github.com/USERNAME/RPIFrame.git
-   git push origin main
+   # Install via snap or binary
+   # Configure with API key
    ```
 
-2. **Deploy on Raspberry Pi**: Once pushed, can deploy with:
+2. **Clone and setup on Pi**:
    ```bash
-   git clone https://github.com/USERNAME/RPIFrame.git
-   cd RPIFrame  
-   ./install.sh
+   git clone https://github.com/spenceriam/RPIFrame.git
+   cd RPIFrame
+   python3 setup.py
    ```
 
-3. **Validation**: Use validation checklist to verify deployment
+3. **Development cycle**:
+   - Edit with Claude Code on Pi
+   - Test immediately: `python3 run.py --web-only`
+   - Commit and push changes
+   - Full test: `python3 run.py`
 
-## Important Notes for Future Development
+### Benefits of Pi Development
+- Immediate testing of display functionality
+- Real hardware validation
+- No cross-platform issues
+- Faster iteration cycle
+- Direct access to GPIO/hardware features
 
-### Pi OS Lite Specific
-- Uses direct framebuffer access via KMS driver (`SDL_VIDEODRIVER=kmsdrm`)
-- No X11 dependencies - pure headless operation
-- Optimized for limited resources (2GB Pi 4)
-- Touch input via direct event handling
+## Pending Features
 
-### Key Differences from InkFrame
-- **Full-color display** instead of e-ink grayscale/dithering
-- **Pygame instead of e-ink drivers** for display output
-- **Touch navigation** instead of button controls
-- **Faster refresh** (no e-ink refresh delays)
-- **Simplified image processing** (no color quantization needed)
+### High Priority
+1. **HEIC Support** - Convert Apple photos to JPEG on upload
+2. **Better error recovery** - Auto-restart failed components
+3. **Photo organization** - Albums/folders support
+4. **Performance optimization** - Caching, lazy loading
 
-### Troubleshooting Resources
-- `deployment.md`: Detailed Pi OS Lite setup instructions
-- `VALIDATION_CHECKLIST.md`: Testing and validation procedures
-- `DEPLOYMENT_PLAN.md`: Production deployment strategies
-- `7inch-DSI-Display_User_Manual-V1.0.pdf`: Hardware reference
+### Medium Priority
+1. **Transition effects** - Fade, slide animations
+2. **Weather/clock overlay** - Optional info display
+3. **Remote control** - Mobile app or web remote
+4. **Backup/restore** - Configuration and photos
 
-### Performance Considerations
-- Optimized for Pi 4 with 2GB+ RAM
-- Photos automatically resized to 800×480
-- Thumbnails generated for web interface
-- Service runs efficiently in background
-- Memory usage ~200-300MB typical
+### Future Enhancements
+1. **Multi-frame sync** - Control multiple frames
+2. **Cloud integration** - Google Photos, iCloud
+3. **Motion detection** - Turn on when someone nearby
+4. **Schedule** - Different photos at different times
 
-## Project Structure
+## Important Notes for Development
 
-```
-RPIFrame/
-├── main.py                    # Main orchestrator
-├── app.py                     # Flask web server
-├── display_slideshow.py       # Pygame slideshow manager
-├── install.sh                 # Automated installation
-├── requirements.txt           # Python dependencies
-├── config.json               # Runtime configuration (created on first run)
-├── test_display.py           # Display testing utility
-├── README.md                 # Complete project documentation
-├── deployment.md             # Pi OS Lite deployment guide
-├── DEPLOYMENT_PLAN.md        # Production deployment strategies
-├── VALIDATION_CHECKLIST.md   # Testing procedures
-├── GIT_SETUP.md             # Git configuration instructions
-├── templates/
-│   └── index.html           # Web interface
-├── static/                  # CSS/JS assets
-├── photos/                  # Photo storage (created at runtime)
-│   └── thumbnails/         # Generated thumbnails
-├── logs/                    # Application logs (created at runtime)
-└── docs/                    # Additional documentation
-```
+### Platform Differences
+- **On Pi**: Full functionality with display and touch
+- **On PC/Mac**: Web-only mode for development
+- **Dependencies**: pygame optional on non-Pi systems
+
+### Error Handling
+- All modules handle missing dependencies gracefully
+- Comprehensive logging to `logs/rpiframe.log`
+- Clear error messages with suggested fixes
+
+### Testing Checklist
+- [ ] Web upload works
+- [ ] Photos display correctly
+- [ ] Touch navigation works (Pi only)
+- [ ] Configuration changes persist
+- [ ] Process management (stop/start)
+- [ ] Port conflict handling
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Broken images in web interface**
+   - Run `python3 debug_photos.py`
+   - Check photos directory exists
+   - Verify absolute paths
+
+2. **Port already in use**
+   - Run `python3 stop_all.py`
+   - Check with `lsof -i :5000`
+   - Change port in config.json
+
+3. **Display not working**
+   - Check `/boot/firmware/config.txt` settings
+   - Verify pygame installation
+   - Run `python3 run.py --web-only` first
+
+4. **Import errors**
+   - Run `python3 setup.py`
+   - Install missing dependencies
+   - Check Python version (3.7+)
 
 ## Summary
 
-The RPIFrame DSI Photo Frame project is **COMPLETE** and ready for deployment. All development objectives have been met:
-
-- ✅ Full-color DSI display support
-- ✅ Web-based photo management
-- ✅ Touch gesture navigation  
-- ✅ Automated installation
+The RPIFrame project has been completely refactored with:
+- ✅ Clean, modular architecture
+- ✅ Robust error handling
+- ✅ Fixed import and path issues
+- ✅ Professional Python package structure
 - ✅ Comprehensive documentation
-- ✅ Production-ready deployment
 
-The only remaining step is pushing to GitHub and then deploying on actual Raspberry Pi 4 hardware for final validation.
+**Recommendation**: Move development to Raspberry Pi for faster iteration and real hardware testing. The refactored codebase is stable and ready for feature additions like HEIC support.

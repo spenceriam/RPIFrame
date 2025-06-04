@@ -23,7 +23,7 @@ DEFAULT_CONFIG = {
     },
     "photos": {
         "directory": "photos",
-        "allowed_extensions": ["jpg", "jpeg", "png", "bmp", "gif"],
+        "allowed_extensions": ["jpg", "jpeg", "png", "bmp", "gif", "heic", "heif"],
         "max_upload_size_mb": 50,
         "thumbnail_size": 200,
         "max_dimension": 1920

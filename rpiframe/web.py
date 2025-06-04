@@ -265,6 +265,12 @@ class WebServer:
             file.save(str(file_path))
             logger.info(f"Saved uploaded file: {file_path.name}")
             
+            # Convert HEIC/HEIF to JPEG if needed
+            if file_path.suffix.lower() in ['.heic', '.heif']:
+                converted_name = self._convert_heic_to_jpeg(file_path)
+                if converted_name:
+                    return converted_name
+            
             return file_path.name
             
         except Exception as e:
@@ -377,6 +383,76 @@ class WebServer:
         except Exception as e:
             logger.error(f"Error rotating photo {photo_id}: {e}")
             return False
+    
+    def _convert_heic_to_jpeg(self, heic_path: Path) -> str:
+        """Convert HEIC/HEIF file to JPEG"""
+        try:
+            # Try using pillow-heif if available
+            try:
+                import pillow_heif
+                pillow_heif.register_heif_opener()
+                logger.info("Using pillow-heif for HEIC conversion")
+            except ImportError:
+                logger.warning("pillow-heif not available, trying fallback method")
+            
+            # Try to open and convert with PIL
+            try:
+                with Image.open(heic_path) as img:
+                    # Convert to RGB
+                    if img.mode != 'RGB':
+                        img = img.convert('RGB')
+                    
+                    # Save as JPEG
+                    jpeg_path = heic_path.with_suffix('.jpg')
+                    img.save(jpeg_path, 'JPEG', quality=95, optimize=True)
+                    
+                    # Delete original HEIC file
+                    heic_path.unlink()
+                    
+                    logger.info(f"Converted HEIC to JPEG: {jpeg_path.name}")
+                    return jpeg_path.name
+                    
+            except Exception as e:
+                logger.error(f"PIL cannot open HEIC: {e}")
+                
+                # Try using pyheif as fallback
+                try:
+                    import pyheif
+                    import numpy as np
+                    
+                    heif_file = pyheif.read(str(heic_path))
+                    image = Image.frombytes(
+                        heif_file.mode,
+                        heif_file.size,
+                        heif_file.data,
+                        "raw",
+                        heif_file.mode,
+                        heif_file.stride,
+                    )
+                    
+                    # Save as JPEG
+                    jpeg_path = heic_path.with_suffix('.jpg')
+                    image.save(jpeg_path, 'JPEG', quality=95, optimize=True)
+                    
+                    # Delete original HEIC file
+                    heic_path.unlink()
+                    
+                    logger.info(f"Converted HEIC to JPEG using pyheif: {jpeg_path.name}")
+                    return jpeg_path.name
+                    
+                except ImportError:
+                    logger.error("pyheif not available for HEIC conversion")
+                except Exception as e:
+                    logger.error(f"Error converting HEIC with pyheif: {e}")
+            
+            # If all methods fail, keep the original file
+            logger.warning(f"Could not convert HEIC file: {heic_path.name}")
+            logger.info("Install 'pillow-heif' for HEIC support: pip install pillow-heif")
+            return heic_path.name
+            
+        except Exception as e:
+            logger.error(f"Error in HEIC conversion: {e}")
+            return heic_path.name
     
     def _get_system_status(self) -> Dict[str, Any]:
         """Get current system status"""
