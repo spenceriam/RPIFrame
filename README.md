@@ -1,8 +1,13 @@
 # RPIFrame: Full-Color DSI Photo Frame
 
-A modern, full-color digital photo frame application for Raspberry Pi 4 with DSI touchscreen display. Features a web interface for photo management and touchscreen swipe navigation.
+A completely refactored, modern digital photo frame application for Raspberry Pi 4 with DSI touchscreen display. Features a professional web interface, enhanced image processing, and robust system architecture.
 
-![RPIFrame Preview](docs/images/preview.png)
+## 🚀 Recent Major Updates (June 2025)
+
+- **✅ DISPLAY STRETCHING FIXED**: Resolved horizontal image stretching with 0.9x compensation
+- **✅ ENHANCED WEB INTERFACE**: Added "Next Photo" button and real-time preview
+- **✅ IMPROVED IMAGE PROCESSING**: 4-step algorithm with proper aspect ratio preservation
+- **✅ COMPREHENSIVE REFACTOR**: Clean Python package structure with robust error handling
 
 ## Features
 
@@ -74,15 +79,11 @@ sudo apt install -y libjpeg-dev zlib1g-dev libpng-dev
 ```bash
 # Clone the repository
 cd ~
-git clone https://github.com/yourusername/RPIFrame.git
+git clone https://github.com/spenceriam/RPIFrame.git
 cd RPIFrame
 
-# Create Python virtual environment
-python3 -m venv venv
-source venv/bin/activate
-
-# Install Python dependencies
-pip install -r requirements.txt
+# Run automated setup (installs dependencies and creates config)
+python3 setup.py
 ```
 
 ### 5. Configure RPIFrame
@@ -100,18 +101,23 @@ Default configuration:
     "width": 800,
     "height": 480,
     "rotation": 0,
-    "slideshow_interval": 60,
-    "transition_effect": "fade"
+    "slideshow_interval": 900,
+    "fit_mode": "contain"
   },
   "photos": {
     "directory": "photos",
-    "allowed_extensions": ["png", "jpg", "jpeg", "gif", "bmp"],
-    "max_upload_size_mb": 50
+    "allowed_extensions": ["jpg", "jpeg", "png", "bmp", "gif", "heic", "heif"],
+    "max_upload_size_mb": 50,
+    "thumbnail_size": 200
   },
   "system": {
-    "web_port": 5000,
+    "enable_touch": true,
     "debug_mode": false,
-    "enable_touch": true
+    "log_level": "INFO"
+  },
+  "web": {
+    "host": "0.0.0.0",
+    "port": 5000
   }
 }
 ```
@@ -119,14 +125,17 @@ Default configuration:
 ### 6. Test the Application
 
 ```bash
-# Test web interface only
-python main.py --web-only
+# Test web interface only (safe for development)
+python3 run.py --web-only
 
-# Test display only
-python main.py --display-only
+# Test display only (Pi with connected display)
+python3 run.py --display-only
 
-# Run both (full application)
-python main.py
+# Run full application (Pi only)
+python3 run.py
+
+# Stop all processes if needed
+python3 stop_all.py
 ```
 
 Access the web interface at `http://YOUR_PI_IP:5000`
@@ -180,10 +189,9 @@ After=network.target
 
 [Service]
 Type=forking
-User=pi
-WorkingDirectory=/home/pi/RPIFrame
-Environment="PATH=/home/pi/RPIFrame/venv/bin"
-ExecStart=/home/pi/RPIFrame/venv/bin/python /home/pi/RPIFrame/main.py
+User=spencer
+WorkingDirectory=/home/spencer/RPIFrame
+ExecStart=/usr/bin/python3 /home/spencer/RPIFrame/run.py
 Restart=on-failure
 RestartSec=10
 
@@ -256,31 +264,56 @@ For Raspberry Pi Zero W or older models:
 
 ## Troubleshooting
 
-### Display Not Working
+### Display Not Working / Black Screen
 
+**Most common fix**: Reboot the Pi - SSH sessions can't directly access DSI display
+```bash
+sudo reboot
+# After reboot, run directly on Pi console:
+python3 run.py
+```
+
+Other fixes:
 1. Check DSI cable connection
-2. Verify `/boot/firmware/config.txt` settings
-3. Try running with `--no-display` flag to test web interface only
-4. Check logs: `journalctl -u rpiframe.service -n 100`
+2. Verify `/boot/firmware/config.txt` settings:
+   ```
+   display_auto_detect=1
+   dtoverlay=vc4-kms-v3d
+   ```
+3. Try web-only mode first: `python3 run.py --web-only`
 
 ### Web Interface Not Accessible
 
-1. Check Pi's IP address: `hostname -I`
-2. Ensure firewall allows port 5000: `sudo ufw allow 5000`
-3. Verify service is running: `systemctl status rpiframe.service`
+1. Check if port is in use: `python3 stop_all.py`
+2. Get Pi's IP address: `hostname -I`
+3. Check logs: `tail -f logs/rpiframe.log`
+4. Debug photo paths: `python3 debug_photos.py`
 
-### Photos Not Displaying
+### Import Errors / Dependencies
 
-1. Check photo format (JPG, PNG, BMP, GIF supported)
-2. Verify photos directory exists and has write permissions
-3. Check available disk space: `df -h`
-4. Review logs for errors
+1. Run automated setup: `python3 setup.py`
+2. Check Python version: `python3 --version` (3.7+ required)
+3. Install missing deps manually: `pip3 install -r requirements-new.txt`
 
-### Touch Not Working
+### Photos Not Displaying Correctly
 
-1. Ensure touch is enabled in configuration
-2. Check touchscreen driver: `ls /dev/input/event*`
-3. Test touch with: `evtest` (install with `sudo apt install evtest`)
+1. **Image stretching**: Fixed in current version with 0.9x compensation
+2. **Wrong aspect ratio**: Check `fit_mode` in config.json ("contain" or "cover")
+3. **Photos not found**: Run `python3 debug_photos.py`
+4. **Upload issues**: Check `max_upload_size_mb` and file extensions
+
+### Process Management
+
+```bash
+# Stop all RPIFrame processes
+python3 stop_all.py
+
+# Check what's running on port 5000
+lsof -i :5000
+
+# Restart cleanly
+python3 run.py
+```
 
 ## Development
 
@@ -288,30 +321,40 @@ For Raspberry Pi Zero W or older models:
 
 ```
 RPIFrame/
-├── main.py              # Main entry point
-├── app.py               # Flask web application
-├── display_slideshow.py # Display management
-├── config.json          # Configuration file
-├── requirements.txt     # Python dependencies
+├── rpiframe/            # Main Python package
+│   ├── __init__.py      # Package initialization
+│   ├── core.py          # PhotoFrame orchestrator
+│   ├── config.py        # Configuration management
+│   ├── display.py       # Display/slideshow manager
+│   ├── web.py           # Flask web server and API
+│   └── utils.py         # Common utilities
+├── run.py               # New main entry point
+├── setup.py             # Automated setup script
+├── stop_all.py          # Process management utility
+├── requirements-new.txt # Updated dependencies
+├── config.json          # Configuration file (auto-created)
 ├── templates/           # HTML templates
-│   └── index.html      # Web interface
-├── static/             # Static assets (created on first run)
-├── photos/             # Photo storage (created on first run)
-│   └── thumbnails/     # Generated thumbnails
-└── README.md           # This file
+│   └── index.html       # Enhanced web interface
+├── static/              # CSS/JS assets
+├── photos/              # Photo storage
+├── logs/                # Application logs
+└── README.md            # This documentation
 ```
 
 ### Running in Development Mode
 
 ```bash
-# Enable debug mode
-python main.py --debug
+# Run web interface only (safe for development on any system)
+python3 run.py --web-only
 
-# Run web interface only (for development on non-Pi systems)
-python main.py --web-only --debug
+# Run with verbose logging
+python3 run.py --web-only --verbose
 
-# Disable display output (useful for testing on non-Pi systems)
-python main.py --no-display
+# Use custom configuration file
+python3 run.py --config custom.json
+
+# Debug photo paths and system status
+python3 debug_photos.py
 ```
 
 ### Contributing
