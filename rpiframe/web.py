@@ -43,13 +43,20 @@ class WebServer:
             raise ImportError("Flask not available")
         
         self.config = config
+        
+        # Get absolute paths
+        base_dir = Path(__file__).parent.parent
+        static_folder = base_dir / 'static'
+        template_folder = base_dir / 'templates'
+        upload_folder = base_dir / self.config.photos.get("directory", "photos")
+        
         self.app = Flask(__name__, 
-                        static_folder='../static',
-                        template_folder='../templates')
+                        static_folder=str(static_folder),
+                        template_folder=str(template_folder))
         
         # Configure Flask app
         self.app.config['MAX_CONTENT_LENGTH'] = self.config.photos.get("max_upload_size_mb", 50) * 1024 * 1024
-        self.app.config['UPLOAD_FOLDER'] = self.config.photos.get("directory", "photos")
+        self.app.config['UPLOAD_FOLDER'] = str(upload_folder)
         
         # Setup routes
         self._setup_routes()
@@ -158,6 +165,18 @@ class WebServer:
         def serve_photo(filename):
             """Serve photo files"""
             upload_folder = self.app.config['UPLOAD_FOLDER']
+            
+            # Security check - prevent directory traversal
+            from werkzeug.security import safe_join
+            safe_path = safe_join(upload_folder, filename)
+            if safe_path is None:
+                return jsonify({'error': 'Invalid path'}), 404
+            
+            # Check if file exists
+            if not os.path.exists(safe_path):
+                logger.warning(f"Photo not found: {filename} at {safe_path}")
+                return jsonify({'error': 'Photo not found'}), 404
+            
             return send_from_directory(upload_folder, filename)
         
         @self.app.route('/api/photos/<photo_id>/rotate', methods=['POST'])
