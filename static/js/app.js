@@ -39,15 +39,17 @@ class RPIFrameApp {
         // System information
         this.diskFill = document.querySelector('.disk-fill');
         this.diskText = document.querySelector('.disk-text');
-        this.statusIndicator = document.querySelector('.indicator');
-        this.statusText = document.querySelector('.status-text');
         this.uptimeEl = document.getElementById('uptime');
         this.cpuTempEl = document.getElementById('cpu-temp');
         this.photoCountEl = document.getElementById('photo-count');
         this.lastUpdateEl = document.getElementById('last-update');
         this.systemLogsEl = document.getElementById('system-logs');
         this.refreshStatusBtn = document.getElementById('refresh-status');
-        this.startServiceBtn = document.getElementById('start-service');
+        this.nextPhotoBtn = document.getElementById('next-photo');
+        
+        // Current photo preview elements
+        this.currentPhotoInfo = document.getElementById('current-photo-info');
+        this.currentPhotoImage = document.getElementById('current-photo-image');
         
         // Notifications
         this.notifications = document.getElementById('notifications');
@@ -59,6 +61,9 @@ class RPIFrameApp {
         
         // Initialize photo management
         this.initPhotoManagement();
+        
+        // Initialize current photo preview
+        this.initCurrentPhotoPreview();
         
         // Initialize settings
         this.initSettings();
@@ -104,6 +109,7 @@ class RPIFrameApp {
         switch (tabId) {
             case 'photos':
                 this.loadPhotos();
+                this.loadCurrentPhoto();
                 break;
             case 'settings':
                 this.loadSettings();
@@ -144,10 +150,15 @@ class RPIFrameApp {
             }
         });
         
-        // Refresh display button
-        this.refreshDisplayBtn.addEventListener('click', () => {
-            this.refreshDisplay();
+        // Next photo button
+        this.nextPhotoBtn.addEventListener('click', () => {
+            this.nextPhoto();
         });
+    }
+    
+    initCurrentPhotoPreview() {
+        // Load current photo info when photos tab is loaded
+        this.loadCurrentPhoto();
     }
     
     initSettings() {
@@ -164,11 +175,6 @@ class RPIFrameApp {
         // Refresh status button
         this.refreshStatusBtn.addEventListener('click', () => {
             this.loadSystemInfo();
-        });
-        
-        // Start service button
-        this.startServiceBtn.addEventListener('click', () => {
-            this.startService();
         });
     }
     
@@ -409,22 +415,68 @@ class RPIFrameApp {
                     this.diskText.textContent = `${status.disk.used} / ${status.disk.total} (${status.disk.percent_used}%)`;
                 }
                 
-                // Update service status
-                if (status.display_running) {
-                    this.statusIndicator.classList.add('active');
-                    this.statusText.textContent = 'Running';
-                    this.startServiceBtn.disabled = true;
-                } else {
-                    this.statusIndicator.classList.remove('active');
-                    this.statusText.textContent = 'Stopped';
-                    this.startServiceBtn.disabled = false;
+                // Update CPU usage
+                if (status.cpu_usage) {
+                    const cpuFill = document.querySelector('.cpu-fill');
+                    const cpuText = document.querySelector('.cpu-text');
+                    if (cpuFill && cpuText) {
+                        cpuFill.style.width = status.cpu_usage.percent + '%';
+                        cpuText.textContent = `${status.cpu_usage.percent.toFixed(1)}%`;
+                        
+                        // Color coding for CPU usage
+                        cpuFill.className = 'cpu-fill';
+                        if (status.cpu_usage.percent > 80) {
+                            cpuFill.classList.add('high-usage');
+                        } else if (status.cpu_usage.percent > 60) {
+                            cpuFill.classList.add('medium-usage');
+                        } else {
+                            cpuFill.classList.add('low-usage');
+                        }
+                    }
                 }
+                
+                // Update Memory usage
+                if (status.memory_usage) {
+                    const memoryFill = document.querySelector('.memory-fill');
+                    const memoryText = document.querySelector('.memory-text');
+                    if (memoryFill && memoryText) {
+                        memoryFill.style.width = status.memory_usage.percent_used + '%';
+                        memoryText.textContent = `${status.memory_usage.used} / ${status.memory_usage.total} (${status.memory_usage.percent_used}%)`;
+                        
+                        // Color coding for Memory usage
+                        memoryFill.className = 'memory-fill';
+                        if (status.memory_usage.percent_used > 80) {
+                            memoryFill.classList.add('high-usage');
+                        } else if (status.memory_usage.percent_used > 60) {
+                            memoryFill.classList.add('medium-usage');
+                        } else {
+                            memoryFill.classList.add('low-usage');
+                        }
+                    }
+                }
+                
+                // Display service status removed - if main service isn't running, web interface wouldn't be accessible
                 
                 // Update system information
                 this.uptimeEl.textContent = this.formatUptime(status.uptime);
                 this.cpuTempEl.textContent = status.cpu_temp;
                 this.photoCountEl.textContent = status.photo_count;
-                this.lastUpdateEl.textContent = new Date(status.timestamp).toLocaleString();
+                
+                // Update overall health
+                if (status.tech_stack && status.tech_stack.overall_health) {
+                    const health = status.tech_stack.overall_health;
+                    const overallHealthEl = document.getElementById('overall-health');
+                    if (overallHealthEl) {
+                        overallHealthEl.textContent = `${health.status} (${health.score}/${health.total_checks})`;
+                        overallHealthEl.className = `info-value health-${health.status}`;
+                    }
+                }
+                
+                // Update tech stack information
+                this.updateTechStack(status.tech_stack);
+                
+                // Update health checks
+                this.updateHealthChecks(status.tech_stack);
                 
                 // Load logs
                 this.loadLogs();
@@ -451,25 +503,163 @@ class RPIFrameApp {
         }
     }
     
-    async startService() {
-        try {
-            const response = await fetch('/api/system/start', {
-                method: 'POST'
+    
+    updateTechStack(techStack) {
+        const container = document.getElementById('tech-stack');
+        if (!container || !techStack) return;
+        
+        let html = '';
+        
+        // Core System
+        if (techStack.core && techStack.core.rpiframe) {
+            const rpi = techStack.core.rpiframe;
+            html += `
+                <div class="tech-section">
+                    <h4>RPIFrame Core</h4>
+                    <div class="tech-item">
+                        <span class="tech-name">Version:</span>
+                        <span class="tech-value">${rpi.version}</span>
+                    </div>
+                    <div class="tech-item">
+                        <span class="tech-name">Status:</span>
+                        <span class="tech-value status-${rpi.status}">${rpi.status}</span>
+                    </div>
+                    <div class="tech-item">
+                        <span class="tech-name">Architecture:</span>
+                        <span class="tech-value">${rpi.architecture}</span>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // System Information
+        if (techStack.system) {
+            const sys = techStack.system;
+            html += `
+                <div class="tech-section">
+                    <h4>System</h4>
+                    <div class="tech-item">
+                        <span class="tech-name">OS:</span>
+                        <span class="tech-value">${sys.os}</span>
+                    </div>
+                    <div class="tech-item">
+                        <span class="tech-name">Python:</span>
+                        <span class="tech-value">${sys.python_version}</span>
+                    </div>
+                    <div class="tech-item">
+                        <span class="tech-name">Architecture:</span>
+                        <span class="tech-value">${sys.arch}</span>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Hardware
+        if (techStack.hardware) {
+            const hw = techStack.hardware;
+            html += `
+                <div class="tech-section">
+                    <h4>Hardware</h4>
+                    ${hw.model ? `
+                        <div class="tech-item">
+                            <span class="tech-name">Model:</span>
+                            <span class="tech-value">${hw.model}</span>
+                        </div>
+                    ` : ''}
+                    ${hw.dsi_display ? `
+                        <div class="tech-item">
+                            <span class="tech-name">DSI Display:</span>
+                            <span class="tech-value status-${hw.dsi_display.status}">${hw.dsi_display.resolution || 'Unknown'}</span>
+                        </div>
+                    ` : ''}
+                    ${hw.gpu_memory ? `
+                        <div class="tech-item">
+                            <span class="tech-name">GPU Memory:</span>
+                            <span class="tech-value">${hw.gpu_memory}</span>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+        
+        // Dependencies
+        if (techStack.dependencies) {
+            html += `
+                <div class="tech-section">
+                    <h4>Key Dependencies</h4>
+            `;
+            
+            Object.entries(techStack.dependencies).forEach(([name, info]) => {
+                html += `
+                    <div class="tech-item">
+                        <span class="tech-name">${name}:</span>
+                        <span class="tech-value status-${info.status}">${info.version} - ${info.description}</span>
+                    </div>
+                `;
             });
             
-            const data = await response.json();
-            
-            if (response.ok) {
-                this.showNotification('Display service started', 'success');
-                // Reload system info after a short delay
-                setTimeout(() => this.loadSystemInfo(), 2000);
-            } else {
-                this.showNotification(`Failed to start service: ${data.error}`, 'error');
-            }
-        } catch (error) {
-            console.error('Error starting service:', error);
-            this.showNotification('Failed to start display service', 'error');
+            html += '</div>';
         }
+        
+        container.innerHTML = html;
+    }
+    
+    updateHealthChecks(techStack) {
+        const container = document.getElementById('health-checks');
+        if (!container || !techStack) return;
+        
+        let html = '';
+        
+        // Health Checks
+        if (techStack.health_checks) {
+            html += `
+                <div class="health-section">
+                    <h4>System Health</h4>
+            `;
+            
+            Object.entries(techStack.health_checks).forEach(([name, check]) => {
+                const statusIcon = check.status === 'ok' ? '✅' : 
+                                 check.status === 'warning' ? '⚠️' : '❌';
+                html += `
+                    <div class="health-item">
+                        <span class="health-indicator">${statusIcon}</span>
+                        <span class="health-name">${name.replace('_', ' ')}:</span>
+                        <span class="health-description">${check.description}</span>
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+        }
+        
+        // Recommendations
+        if (techStack.recommendations && techStack.recommendations.length > 0) {
+            html += `
+                <div class="recommendations-section">
+                    <h4>Recommendations</h4>
+            `;
+            
+            techStack.recommendations.forEach(rec => {
+                const priorityIcon = rec.priority === 'high' ? '🔴' :
+                                   rec.priority === 'medium' ? '🟡' : '🔵';
+                html += `
+                    <div class="recommendation-item priority-${rec.priority}">
+                        <span class="priority-indicator">${priorityIcon}</span>
+                        <span class="recommendation-text">${rec.message}</span>
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+        } else {
+            html += `
+                <div class="recommendations-section">
+                    <div class="no-recommendations">✅ No recommendations - system running optimally!</div>
+                </div>
+            `;
+        }
+        
+        container.innerHTML = html;
     }
     
     formatUptime(seconds) {
@@ -521,6 +711,78 @@ class RPIFrameApp {
             option.textContent = tz.replace(/_/g, ' ');
             this.timezone.appendChild(option);
         });
+    }
+    
+    async loadCurrentPhoto() {
+        try {
+            const response = await fetch('/api/slideshow/current');
+            if (response.ok) {
+                const data = await response.json();
+                console.log('Current photo API response:', data); // Debug log
+                if (data.current_photo) {
+                    this.currentPhotoInfo.textContent = `Currently showing: ${data.current_photo}`;
+                    this.currentPhotoImage.src = `/photos/${data.current_photo}`;
+                    this.currentPhotoImage.style.display = 'block';
+                    console.log('Updated preview to:', data.current_photo); // Debug log
+                } else {
+                    this.currentPhotoInfo.textContent = 'No photo currently displayed';
+                    this.currentPhotoImage.style.display = 'none';
+                }
+            } else {
+                console.error('API response not ok:', response.status);
+                this.currentPhotoInfo.textContent = 'Error loading current photo';
+            }
+        } catch (error) {
+            console.error('Error loading current photo:', error);
+            this.currentPhotoInfo.textContent = 'Unable to load current photo info';
+            this.currentPhotoImage.style.display = 'none';
+        }
+    }
+    
+    async nextPhoto() {
+        try {
+            // Show loading state
+            this.currentPhotoInfo.textContent = 'Changing photo...';
+            this.nextPhotoBtn.disabled = true;
+            this.nextPhotoBtn.textContent = 'Changing...';
+            
+            const response = await fetch('/api/slideshow/next', {
+                method: 'POST'
+            });
+            
+            if (response.ok) {
+                this.showNotification('Displaying next photo', 'success');
+                
+                // Try multiple times to get the updated photo info
+                let attempts = 0;
+                const maxAttempts = 5;
+                const checkPhoto = async () => {
+                    attempts++;
+                    await this.loadCurrentPhoto();
+                    
+                    // If still loading or no change after multiple attempts, try again
+                    if (attempts < maxAttempts && this.currentPhotoInfo.textContent.includes('Loading')) {
+                        setTimeout(checkPhoto, 500);
+                    }
+                };
+                
+                // Start checking after a brief delay
+                setTimeout(checkPhoto, 800);
+            } else {
+                this.showNotification('Failed to advance to next photo', 'error');
+                this.currentPhotoInfo.textContent = 'Error changing photo';
+            }
+        } catch (error) {
+            console.error('Error advancing to next photo:', error);
+            this.showNotification('Error advancing to next photo', 'error');
+            this.currentPhotoInfo.textContent = 'Error changing photo';
+        } finally {
+            // Re-enable button
+            setTimeout(() => {
+                this.nextPhotoBtn.disabled = false;
+                this.nextPhotoBtn.textContent = 'Next Photo';
+            }, 2000);
+        }
     }
     
     showNotification(message, type = 'info') {

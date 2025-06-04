@@ -27,7 +27,16 @@
             <section id="photos" class="tab-content active">
                 <div class="content-header">
                     <h2>Photo Management</h2>
-                    <button id="refresh-display" class="button primary">Refresh Display</button>
+                    <button id="next-photo" class="button primary">Next Photo</button>
+                </div>
+                
+                <!-- Current Photo Preview -->
+                <div class="info-card" style="margin-bottom: 1.5rem;">
+                    <h3>Currently Displaying</h3>
+                    <div id="current-photo-preview" style="text-align: center; padding: 1rem;">
+                        <div id="current-photo-info" style="margin-bottom: 1rem; color: #666; font-size: 0.9rem;">Loading current photo...</div>
+                        <img id="current-photo-image" style="max-width: 300px; max-height: 200px; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: none;" alt="Current photo">
+                    </div>
                 </div>
 
                 <div class="upload-section">
@@ -120,29 +129,46 @@
 
                 <div class="system-info">
                     <div class="info-card">
-                        <h3>Storage</h3>
-                        <div class="disk-usage">
-                            <div class="disk-bar">
-                                <div class="disk-fill" style="width: 0%"></div>
+                        <h3>System Resources</h3>
+                        
+                        <div class="resource-section">
+                            <h4>Storage</h4>
+                            <div class="disk-usage">
+                                <div class="disk-bar">
+                                    <div class="disk-fill" style="width: 0%"></div>
+                                </div>
+                                <div class="disk-text">Loading...</div>
                             </div>
-                            <div class="disk-text">Loading...</div>
+                        </div>
+                        
+                        <div class="resource-section">
+                            <h4>CPU</h4>
+                            <div class="cpu-usage">
+                                <div class="resource-bar">
+                                    <div class="cpu-fill" style="width: 0%"></div>
+                                </div>
+                                <div class="cpu-text">Loading...</div>
+                            </div>
+                        </div>
+                        
+                        <div class="resource-section">
+                            <h4>Memory</h4>
+                            <div class="memory-usage">
+                                <div class="resource-bar">
+                                    <div class="memory-fill" style="width: 0%"></div>
+                                </div>
+                                <div class="memory-text">Loading...</div>
+                            </div>
                         </div>
                     </div>
 
                     <div class="info-card">
-                        <h3>Display Service</h3>
-                        <div class="service-status">
-                            <div class="status-indicator">
-                                <span class="indicator"></span>
-                                <span class="status-text">Checking...</span>
-                            </div>
-                            <button id="start-service" class="button secondary">Start Service</button>
-                        </div>
-                    </div>
-
-                    <div class="info-card">
-                        <h3>System Information</h3>
+                        <h3>System Overview</h3>
                         <div class="system-details">
+                            <div class="info-row">
+                                <span class="info-label">Overall Health:</span>
+                                <span class="info-value" id="overall-health">Loading...</span>
+                            </div>
                             <div class="info-row">
                                 <span class="info-label">Uptime:</span>
                                 <span class="info-value" id="uptime">Loading...</span>
@@ -155,10 +181,20 @@
                                 <span class="info-label">Photos:</span>
                                 <span class="info-value" id="photo-count">Loading...</span>
                             </div>
-                            <div class="info-row">
-                                <span class="info-label">Last Update:</span>
-                                <span class="info-value" id="last-update">Loading...</span>
-                            </div>
+                        </div>
+                    </div>
+
+                    <div class="info-card">
+                        <h3>RPIFrame Tech Stack</h3>
+                        <div class="tech-stack" id="tech-stack">
+                            <div class="loading">Loading tech stack information...</div>
+                        </div>
+                    </div>
+
+                    <div class="info-card">
+                        <h3>Health Checks & Recommendations</h3>
+                        <div class="health-checks" id="health-checks">
+                            <div class="loading">Loading health information...</div>
                         </div>
                     </div>
 

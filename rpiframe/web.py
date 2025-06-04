@@ -161,6 +161,30 @@ class WebServer:
                 logger.error(f"Error getting system status: {e}")
                 return jsonify({'success': False, 'error': str(e)}), 500
         
+        @self.app.route('/api/system/logs', methods=['GET'])
+        def get_system_logs():
+            """Get system logs"""
+            try:
+                lines = int(request.args.get('lines', 50))
+                logs = self._get_system_logs(lines)
+                return jsonify({'success': True, 'logs': logs})
+            except Exception as e:
+                logger.error(f"Error getting system logs: {e}")
+                return jsonify({'success': False, 'error': str(e)}), 500
+        
+        @self.app.route('/api/system/start', methods=['POST'])
+        def start_display_service():
+            """Start display service"""
+            try:
+                result = self._start_display_service()
+                if result['success']:
+                    return jsonify(result)
+                else:
+                    return jsonify(result), 500
+            except Exception as e:
+                logger.error(f"Error starting display service: {e}")
+                return jsonify({'success': False, 'error': str(e)}), 500
+        
         @self.app.route('/photos/<path:filename>')
         def serve_photo(filename):
             """Serve photo files"""
@@ -193,6 +217,37 @@ class WebServer:
                     
             except Exception as e:
                 logger.error(f"Error rotating photo: {e}")
+                return jsonify({'success': False, 'error': str(e)}), 500
+        
+        @self.app.route('/api/slideshow/next', methods=['POST'])
+        def next_photo():
+            """Advance to next photo in slideshow"""
+            try:
+                # Create a signal file that the display manager can detect
+                signal_file = Path('/tmp/rpiframe_next_photo')
+                signal_file.touch()
+                
+                logger.info("Next photo signal sent")
+                return jsonify({'success': True, 'message': 'Next photo signal sent'})
+                
+            except Exception as e:
+                logger.error(f"Error sending next photo signal: {e}")
+                return jsonify({'success': False, 'error': str(e)}), 500
+        
+        @self.app.route('/api/slideshow/current', methods=['GET'])
+        def current_photo():
+            """Get currently displayed photo"""
+            try:
+                # Check if there's a current photo file indicator
+                current_file = Path('/tmp/rpiframe_current_photo')
+                if current_file.exists():
+                    current_photo = current_file.read_text().strip()
+                    return jsonify({'success': True, 'current_photo': current_photo})
+                else:
+                    return jsonify({'success': True, 'current_photo': None})
+                    
+            except Exception as e:
+                logger.error(f"Error getting current photo: {e}")
                 return jsonify({'success': False, 'error': str(e)}), 500
     
     def _get_photo_list(self) -> List[Dict[str, Any]]:
@@ -467,10 +522,30 @@ class WebServer:
                     photo_count += len(list(upload_dir.glob(f"*.{ext}")))
                     photo_count += len(list(upload_dir.glob(f"*.{ext.upper()}")))
             
+            # Check if display service is running
+            display_running = self._is_display_service_running()
+            
+            # Get uptime
+            uptime = self._get_uptime()
+            
+            # Get tech stack and version information
+            tech_stack = self._get_tech_stack_info()
+            
             status = {
                 'timestamp': datetime.now().isoformat(),
                 'photo_count': photo_count,
                 'photos_directory': str(upload_dir),
+                'display_running': display_running,
+                'uptime': uptime,
+                # Frontend expects 'disk' but we also keep 'disk_usage' for backward compatibility
+                'disk': {
+                    'total': format_bytes(system_info['disk_usage']['total']),
+                    'used': format_bytes(system_info['disk_usage']['used']),
+                    'free': format_bytes(system_info['disk_usage']['free']),
+                    'percent_used': round(
+                        system_info['disk_usage']['used'] / system_info['disk_usage']['total'] * 100, 1
+                    ) if system_info['disk_usage']['total'] > 0 else 0
+                },
                 'disk_usage': {
                     'total': format_bytes(system_info['disk_usage']['total']),
                     'used': format_bytes(system_info['disk_usage']['used']),
@@ -483,12 +558,16 @@ class WebServer:
                     'total': format_bytes(system_info['memory_usage']['total']),
                     'used': format_bytes(system_info['memory_usage']['used']),
                     'free': format_bytes(system_info['memory_usage']['free']),
-                    'percent_used': round(
+                    'percent_used': system_info['memory_usage'].get('percent', round(
                         system_info['memory_usage']['used'] / system_info['memory_usage']['total'] * 100, 1
-                    ) if system_info['memory_usage']['total'] > 0 else 0
+                    ) if system_info['memory_usage']['total'] > 0 else 0)
+                },
+                'cpu_usage': {
+                    'percent': system_info.get('cpu_usage', {}).get('percent', 0)
                 },
                 'cpu_temp': system_info['cpu_temp'],
-                'platform': system_info['platform']
+                'platform': system_info['platform'],
+                'tech_stack': tech_stack
             }
             
             return status
@@ -496,6 +575,296 @@ class WebServer:
         except Exception as e:
             logger.error(f"Error getting system status: {e}")
             return {'error': str(e)}
+    
+    def _get_system_logs(self, lines: int = 50) -> List[str]:
+        """Get system logs"""
+        log_lines = []
+        try:
+            # Try to read from the log file
+            log_file = self.config.system.get("log_file", "rpiframe.log")
+            log_path = Path(log_file)
+            
+            if log_path.exists():
+                with open(log_path, 'r') as f:
+                    all_lines = f.readlines()
+                    # Get the last N lines
+                    log_lines = all_lines[-lines:] if len(all_lines) > lines else all_lines
+            else:
+                log_lines = [f"Log file not found: {log_path}\n"]
+                
+        except Exception as e:
+            logger.error(f"Error reading log file: {e}")
+            log_lines = [f"Error reading logs: {str(e)}\n"]
+        
+        return log_lines
+    
+    def _is_display_service_running(self) -> bool:
+        """Check if display service is running"""
+        try:
+            # Check if any pygame processes are running
+            import psutil
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                try:
+                    cmdline = ' '.join(proc.info['cmdline'] or [])
+                    if 'display.py' in cmdline or 'DisplayManager' in cmdline:
+                        return True
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+            return False
+        except ImportError:
+            # If psutil not available, assume it's running if we can't tell
+            logger.warning("psutil not available, cannot check display service status")
+            return False
+        except Exception as e:
+            logger.error(f"Error checking display service status: {e}")
+            return False
+    
+    def _get_uptime(self) -> int:
+        """Get system uptime in seconds"""
+        try:
+            with open('/proc/uptime', 'r') as f:
+                uptime_seconds = float(f.readline().split()[0])
+                return int(uptime_seconds)
+        except Exception as e:
+            logger.error(f"Error getting uptime: {e}")
+            return 0
+    
+    def _start_display_service(self) -> Dict[str, Any]:
+        """Start display service"""
+        try:
+            # Check if already running
+            if self._is_display_service_running():
+                return {
+                    'success': False,
+                    'error': 'Display service is already running'
+                }
+            
+            # Try to start the display service
+            import subprocess
+            import sys
+            
+            # Get the current working directory
+            cwd = Path(__file__).parent.parent
+            
+            # Start the display service as a background process
+            cmd = [sys.executable, 'run.py', '--display-only']
+            proc = subprocess.Popen(
+                cmd,
+                cwd=str(cwd),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                start_new_session=True
+            )
+            
+            # Give it a moment to start
+            import time
+            time.sleep(2)
+            
+            # Check if it's actually running
+            if self._is_display_service_running():
+                return {
+                    'success': True,
+                    'message': 'Display service started successfully',
+                    'pid': proc.pid
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': 'Display service failed to start'
+                }
+                
+        except Exception as e:
+            logger.error(f"Error starting display service: {e}")
+            return {
+                'success': False,
+                'error': f'Failed to start display service: {str(e)}'
+            }
+    
+    def _get_tech_stack_info(self) -> Dict[str, Any]:
+        """Get comprehensive tech stack information and health status"""
+        try:
+            import sys
+            import platform
+            import subprocess
+            import os
+            
+            tech_stack = {
+                'core': {},
+                'system': {},
+                'dependencies': {},
+                'hardware': {},
+                'health_checks': {},
+                'recommendations': []
+            }
+            
+            # Core System Information
+            tech_stack['system'] = {
+                'os': f"{platform.system()} {platform.release()}",
+                'arch': platform.machine(),
+                'python_version': f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+                'hostname': platform.node(),
+                'kernel': platform.release() if platform.system() == 'Linux' else 'N/A'
+            }
+            
+            # RPIFrame Core
+            try:
+                rpiframe_version = "2.0.0-refactored"  # Current version
+                # Since we can respond to this request, the main service is running
+                # Display functionality is integrated into the main service
+                tech_stack['core']['rpiframe'] = {
+                    'version': rpiframe_version,
+                    'status': 'running',
+                    'architecture': 'modular',
+                    'last_update': 'June 2025',
+                    'components': 'web + display integrated'
+                }
+            except:
+                tech_stack['core']['rpiframe'] = {'status': 'error', 'version': 'unknown'}
+            
+            # Key Dependencies
+            dependencies = {
+                'pygame': 'Display rendering',
+                'flask': 'Web interface',
+                'pillow': 'Image processing', 
+                'psutil': 'System monitoring'
+            }
+            
+            for dep, description in dependencies.items():
+                try:
+                    if dep == 'pygame':
+                        import pygame
+                        version = pygame.version.ver
+                        available = True
+                    elif dep == 'flask':
+                        import flask
+                        version = flask.__version__
+                        available = True
+                    elif dep == 'pillow':
+                        import PIL
+                        version = PIL.__version__
+                        available = True
+                    elif dep == 'psutil':
+                        import psutil
+                        version = psutil.__version__
+                        available = True
+                    else:
+                        version = 'unknown'
+                        available = False
+                        
+                    tech_stack['dependencies'][dep] = {
+                        'version': version,
+                        'available': available,
+                        'description': description,
+                        'status': 'ok' if available else 'missing'
+                    }
+                except ImportError:
+                    tech_stack['dependencies'][dep] = {
+                        'version': 'not_installed',
+                        'available': False,
+                        'description': description,
+                        'status': 'missing'
+                    }
+                except Exception as e:
+                    tech_stack['dependencies'][dep] = {
+                        'version': 'error',
+                        'available': False,
+                        'description': description,
+                        'status': f'error: {str(e)}'
+                    }
+            
+            # Hardware Information (Raspberry Pi specific)
+            try:
+                # Get Pi model
+                with open('/proc/device-tree/model', 'r') as f:
+                    pi_model = f.read().strip().replace('\x00', '')
+                tech_stack['hardware']['model'] = pi_model
+                
+                # DSI Display detection
+                dsi_connected = os.path.exists('/sys/class/backlight/10-0045/')
+                tech_stack['hardware']['dsi_display'] = {
+                    'connected': dsi_connected,
+                    'status': 'detected' if dsi_connected else 'not_detected',
+                    'resolution': '800x480' if dsi_connected else 'unknown'
+                }
+                
+                # GPU memory split
+                try:
+                    gpu_mem = subprocess.check_output(['vcgencmd', 'get_mem', 'gpu'], 
+                                                    text=True).strip()
+                    tech_stack['hardware']['gpu_memory'] = gpu_mem.replace('gpu=', '')
+                except:
+                    tech_stack['hardware']['gpu_memory'] = 'unknown'
+                    
+            except Exception as e:
+                tech_stack['hardware']['error'] = str(e)
+            
+            # Health Checks
+            health_checks = {}
+            
+            # Check if all core services are working
+            service_running = True  # We're responding to this request, so main service is running
+            photos_exist = self.config.photos and len(self._get_photo_list()) > 0
+            
+            health_checks['rpiframe_service'] = {
+                'status': 'ok' if service_running else 'error',
+                'description': 'Main RPIFrame service (web + display integrated)'
+            }
+            
+            health_checks['photos'] = {
+                'status': 'ok' if photos_exist else 'warning',
+                'description': f'{len(self._get_photo_list())} photos available'
+            }
+            
+            # Check configuration
+            config_valid = self.config.validate() if hasattr(self.config, 'validate') else True
+            health_checks['configuration'] = {
+                'status': 'ok' if config_valid else 'warning',
+                'description': 'System configuration'
+            }
+            
+            tech_stack['health_checks'] = health_checks
+            
+            # Generate recommendations
+            recommendations = []
+            
+            if not photos_exist:
+                recommendations.append({
+                    'type': 'content',
+                    'priority': 'high', 
+                    'message': 'No photos found - upload photos to start slideshow'
+                })
+            
+            missing_deps = [dep for dep, info in tech_stack['dependencies'].items() 
+                          if not info['available']]
+            if missing_deps:
+                recommendations.append({
+                    'type': 'dependencies',
+                    'priority': 'low',
+                    'message': f'Optional dependencies missing: {", ".join(missing_deps)}'
+                })
+            
+            # Overall system health
+            all_critical_ok = (service_running and photos_exist and 
+                             tech_stack['dependencies']['pygame']['available'] and
+                             tech_stack['dependencies']['flask']['available'])
+            
+            tech_stack['overall_health'] = {
+                'status': 'excellent' if all_critical_ok else
+                         'good' if service_running and photos_exist else 'needs_attention',
+                'score': len([h for h in health_checks.values() if h['status'] == 'ok']),
+                'total_checks': len(health_checks)
+            }
+            
+            tech_stack['recommendations'] = recommendations
+            
+            return tech_stack
+            
+        except Exception as e:
+            logger.error(f"Error getting tech stack info: {e}")
+            return {
+                'error': str(e),
+                'overall_health': {'status': 'error', 'score': 0, 'total_checks': 0}
+            }
     
     def run(self) -> None:
         """Run the web server"""

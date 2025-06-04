@@ -368,11 +368,27 @@ header .subtitle {
     border-bottom: 1px solid var(--border-color);
 }
 
-.disk-usage {
-    margin-top: 1rem;
+.resource-section {
+    margin-bottom: 1.5rem;
 }
 
-.disk-bar {
+.resource-section:last-child {
+    margin-bottom: 0;
+}
+
+.resource-section h4 {
+    margin: 0 0 0.5rem 0;
+    font-size: 0.9rem;
+    color: var(--secondary-color);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.disk-usage, .cpu-usage, .memory-usage {
+    margin-top: 0.5rem;
+}
+
+.disk-bar, .resource-bar {
     height: 10px;
     background-color: #e9ecef;
     border-radius: 5px;
@@ -380,14 +396,30 @@ header .subtitle {
     margin-bottom: 0.5rem;
 }
 
-.disk-fill {
+.disk-fill, .cpu-fill, .memory-fill {
     height: 100%;
-    background-color: var(--accent-color);
     transition: width 0.3s ease;
 }
 
-.disk-text {
+.disk-fill {
+    background-color: var(--accent-color);
+}
+
+.cpu-fill.low-usage, .memory-fill.low-usage {
+    background: linear-gradient(90deg, #28a745, #20c997);
+}
+
+.cpu-fill.medium-usage, .memory-fill.medium-usage {
+    background: linear-gradient(90deg, #ffc107, #fd7e14);
+}
+
+.cpu-fill.high-usage, .memory-fill.high-usage {
+    background: linear-gradient(90deg, #dc3545, #e74c3c);
+}
+
+.disk-text, .cpu-text, .memory-text {
     font-size: 0.9rem;
+    font-family: monospace;
 }
 
 .service-status {
@@ -446,6 +478,160 @@ header .subtitle {
     max-height: 300px;
     overflow-y: auto;
     white-space: pre-wrap;
+}
+
+/* Tech Stack and Health Check Styles */
+.tech-stack, .health-checks {
+    margin-top: 1rem;
+}
+
+.tech-section, .health-section, .recommendations-section {
+    margin-bottom: 1.5rem;
+}
+
+.tech-section h4, .health-section h4, .recommendations-section h4 {
+    margin: 0 0 0.75rem 0;
+    color: var(--primary-color);
+    font-size: 1rem;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0.25rem;
+}
+
+.tech-item, .health-item, .recommendation-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.4rem 0;
+    border-bottom: 1px solid #f0f0f0;
+    font-size: 0.9rem;
+}
+
+.tech-item:last-child, .health-item:last-child, .recommendation-item:last-child {
+    border-bottom: none;
+}
+
+.tech-name, .health-name {
+    font-weight: 500;
+    min-width: 120px;
+}
+
+.tech-value {
+    flex: 1;
+    text-align: right;
+    font-family: monospace;
+}
+
+/* Status indicators */
+.status-ok, .status-running, .health-excellent, .health-good {
+    color: var(--success-color);
+    font-weight: 500;
+}
+
+.status-warning, .status-stopped, .health-needs_attention {
+    color: var(--warning-color);
+    font-weight: 500;
+}
+
+.status-error, .status-missing, .health-error {
+    color: var(--error-color);
+    font-weight: 500;
+}
+
+.status-web_only {
+    color: var(--accent-color);
+    font-weight: 500;
+}
+
+.status-detected {
+    color: var(--success-color);
+}
+
+.status-not_detected {
+    color: var(--warning-color);
+}
+
+/* Health check specific styles */
+.health-item {
+    align-items: flex-start;
+}
+
+.health-indicator {
+    font-size: 1.1rem;
+    margin-right: 0.5rem;
+    min-width: 20px;
+}
+
+.health-name {
+    min-width: 140px;
+    text-transform: capitalize;
+}
+
+.health-description {
+    flex: 1;
+    color: var(--secondary-color);
+    font-size: 0.85rem;
+}
+
+/* Recommendation specific styles */
+.recommendation-item {
+    align-items: flex-start;
+    padding: 0.6rem 0;
+    background-color: rgba(0, 0, 0, 0.02);
+    border-radius: 4px;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+    margin-bottom: 0.5rem;
+    border: none;
+}
+
+.priority-indicator {
+    font-size: 1rem;
+    margin-right: 0.5rem;
+    min-width: 20px;
+}
+
+.recommendation-text {
+    flex: 1;
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+.priority-high {
+    border-left: 3px solid var(--error-color);
+}
+
+.priority-medium {
+    border-left: 3px solid var(--warning-color);
+}
+
+.priority-low {
+    border-left: 3px solid var(--accent-color);
+}
+
+.no-recommendations {
+    text-align: center;
+    color: var(--success-color);
+    font-weight: 500;
+    padding: 1rem;
+    background-color: rgba(40, 167, 69, 0.1);
+    border-radius: 4px;
+}
+
+/* Overall health indicator */
+.health-excellent {
+    color: var(--success-color);
+}
+
+.health-good {
+    color: #6cb2eb;
+}
+
+.health-needs_attention {
+    color: var(--warning-color);
+}
+
+.health-error {
+    color: var(--error-color);
 }
 
 /* Notifications */

@@ -11,6 +11,37 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Recent Major Refactor (December 2024)
 The entire project has been refactored to address critical issues:
 
+### Latest Updates (June 2025) - MAJOR IMPROVEMENTS ✨
+- **✅ DISPLAY STRETCHING FIXED**: Resolved horizontal image stretching issue on DSI display
+  - Implemented horizontal pre-squish compensation (0.9 factor) to counter hardware stretching
+  - Completely rewrote image processing with proper 4-step algorithm:
+    1. Center crop based on original image dimensions
+    2. Apply counter-squish compensation 
+    3. Scale to display size
+    4. Final crop for exact fit
+  - Images now display with correct aspect ratios and proper centering
+
+- **✅ ENHANCED WEB INTERFACE**:
+  - Added "Next Photo" button to Photos tab for easy testing
+  - Current photo preview shows what's displaying on the physical frame
+  - Removed redundant "Refresh Display" button
+  - Real-time preview updates when advancing photos
+  - Enhanced system monitoring with CPU/Memory usage bars (htop-style)
+
+- **✅ IMPROVED SLIDESHOW FUNCTIONALITY**:
+  - Random photo selection on startup (no longer always starts with first photo)
+  - Fixed slideshow interval to respect web interface settings (15 minutes)
+  - Web-triggered photo advancement via API signal system
+  - Better centering algorithm prevents top/bottom cropping issues
+
+- **✅ COMPREHENSIVE SYSTEM MONITORING**:
+  - Tech stack information with version details
+  - Health checks and recommendations system
+  - Resource usage visualization with color-coded bars
+  - Streamlined system information display
+
+- **🎯 CURRENT STATUS**: All major display and interface issues resolved. Frame now displays photos with correct aspect ratios and provides excellent web-based management.
+
 **✅ Complete Architecture Overhaul**
 - Migrated from scattered files to clean Python package structure (`rpiframe/`)
 - Unified configuration system replacing multiple conflicting configs
@@ -44,10 +75,18 @@ RPIFrame/
 - Clean process management and shutdown
 - Comprehensive logging system
 
-### Known Issues Being Addressed
-1. **Photo paths**: Fixed absolute path issues in web server
-2. **HEIC support**: Need to add conversion for Apple photos
-3. **Development workflow**: Should move to Pi for faster iteration
+### Remaining Tasks
+1. **HEIC support**: Add conversion for Apple photos on upload
+2. **Transition effects**: Implement wipe/fade transitions between photos (framework ready)
+3. **Photo organization**: Albums/folders support for better management
+4. **Cloud integration**: Google Photos, iCloud sync capabilities
+
+### Recently Resolved ✅
+1. ~~**Display stretching**: Fixed with 0.9x horizontal pre-squish compensation~~
+2. ~~**Photo centering**: Improved crop algorithm for proper subject positioning~~
+3. ~~**Web interface**: Enhanced with current photo preview and Next Photo button~~
+4. ~~**System monitoring**: Added comprehensive resource tracking and health checks~~
+5. ~~**Configuration sync**: Fixed slideshow interval to respect web settings~~
 
 ## Architecture
 
@@ -67,20 +106,63 @@ RPIFrame/
 
 #### `rpiframe/display.py` - DisplayManager Class
 - Pygame-based slideshow with touch support
-- Graceful handling when pygame unavailable
-- EXIF rotation support
-- Multiple fit modes (contain/cover)
+- Advanced 4-step image processing with aspect ratio preservation
+- Horizontal pre-squish compensation (0.9 factor) for display stretching
+- EXIF rotation support and proper center cropping
+- Multiple fit modes (contain/cover) with intelligent scaling
+- Web-triggered photo advancement via signal files
 
 #### `rpiframe/web.py` - WebServer Class
-- Flask-based photo management API
-- Fixed absolute path handling
-- Thumbnail generation
-- System status monitoring
+- Flask-based photo management API with slideshow control
+- Current photo tracking and preview API endpoints
+- Enhanced system monitoring with tech stack information
+- Resource usage tracking (CPU, memory, storage) with health checks
+- Fixed absolute path handling and thumbnail generation
 
 #### `run.py` - Entry Point
 - Clean command-line interface
 - Options: --web-only, --display-only, --config
 - Proper argument parsing
+
+## After Reboot Instructions
+
+Once you've rebooted the Pi, the DSI display should be properly initialized. To start RPIFrame:
+
+1. **From local console** (keyboard attached to Pi):
+   ```bash
+   cd /home/spencer/RPIFrame
+   python3 run.py
+   ```
+
+2. **For auto-start on boot**, create a systemd service:
+   ```bash
+   sudo nano /etc/systemd/system/rpiframe.service
+   ```
+   
+   Add:
+   ```ini
+   [Unit]
+   Description=RPIFrame Photo Display
+   After=multi-user.target
+   
+   [Service]
+   Type=simple
+   User=spencer
+   WorkingDirectory=/home/spencer/RPIFrame
+   ExecStart=/usr/bin/python3 /home/spencer/RPIFrame/run.py
+   Restart=always
+   RestartSec=10
+   
+   [Install]
+   WantedBy=multi-user.target
+   ```
+   
+   Then enable:
+   ```bash
+   sudo systemctl daemon-reload
+   sudo systemctl enable rpiframe.service
+   sudo systemctl start rpiframe.service
+   ```
 
 ## Key Commands
 
@@ -236,10 +318,20 @@ git push origin main
    - Check with `lsof -i :5000`
    - Change port in config.json
 
-3. **Display not working**
-   - Check `/boot/firmware/config.txt` settings
-   - Verify pygame installation
-   - Run `python3 run.py --web-only` first
+3. **Display not working / Black screen**
+   - **Most common fix**: Reboot the Pi (SSH sessions can't directly access DSI display)
+   - After reboot, run directly on Pi console or set up auto-start
+   - Check `/boot/firmware/config.txt` for DSI display settings:
+     ```
+     display_auto_detect=1
+     dtoverlay=vc4-kms-v3d
+     ```
+   - Application logs show it's working (photos advancing) but output not reaching screen
+   - Consider creating systemd service for auto-start on boot:
+     ```bash
+     sudo systemctl enable rpiframe.service
+     sudo systemctl start rpiframe.service
+     ```
 
 4. **Import errors**
    - Run `python3 setup.py`

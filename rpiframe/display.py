@@ -47,7 +47,12 @@ class DisplayManager:
         self.width = self.config.display.get("width", 800)
         self.height = self.config.display.get("height", 480)
         self.rotation = self.config.display.get("rotation", 0)
-        self.slideshow_interval = self.config.display.get("slideshow_interval", 60)
+        # Get interval from web settings (in minutes) or fallback to legacy (in seconds)
+        rotation_interval_minutes = self.config.display.get("rotation_interval_minutes")
+        if rotation_interval_minutes:
+            self.slideshow_interval = rotation_interval_minutes * 60  # Convert to seconds
+        else:
+            self.slideshow_interval = self.config.display.get("slideshow_interval", 60)
         self.fit_mode = self.config.display.get("fit_mode", "contain")
         self.enable_touch = self.config.system.get("enable_touch", True)
         
@@ -69,21 +74,63 @@ class DisplayManager:
                 logger.error("Display dependencies not available")
                 return False
             
-            pygame.init()
+            # Try different SDL drivers for Raspberry Pi DSI display
+            drivers_to_try = [
+                ('x11', {}),
+                ('fbcon', {'SDL_FBDEV': '/dev/fb0'}),
+                ('directfb', {}),
+                ('kmsdrm', {'SDL_FBDEV': '/dev/fb0'}),
+                (None, {})  # Default driver
+            ]
             
-            # Configure SDL for Raspberry Pi DSI display
-            os.environ['SDL_VIDEODRIVER'] = 'kmsdrm'
-            os.environ['SDL_FBDEV'] = '/dev/fb0'
+            initialized = False
+            for driver, env_vars in drivers_to_try:
+                try:
+                    # Set environment variables
+                    if driver:
+                        os.environ['SDL_VIDEODRIVER'] = driver
+                    else:
+                        os.environ.pop('SDL_VIDEODRIVER', None)
+                    
+                    for key, value in env_vars.items():
+                        os.environ[key] = value
+                    
+                    # Try to initialize pygame
+                    pygame.init()
+                    
+                    # Test if we can get display info
+                    info = pygame.display.Info()
+                    logger.info(f"Initialized with driver: {driver or 'default'}, Display: {info.current_w}x{info.current_h}")
+                    initialized = True
+                    break
+                    
+                except Exception as e:
+                    logger.debug(f"Failed with driver {driver}: {e}")
+                    pygame.quit()
+                    # Clean up environment
+                    os.environ.pop('SDL_VIDEODRIVER', None)
+                    for key in env_vars:
+                        os.environ.pop(key, None)
+                    continue
             
-            # Get display info
-            try:
-                info = pygame.display.Info()
-                logger.info(f"Display info: {info.current_w}x{info.current_h}")
-            except:
-                logger.warning("Could not get display info")
+            if not initialized:
+                raise Exception("Could not initialize display with any driver")
             
             # Create fullscreen display
             flags = pygame.FULLSCREEN | pygame.DOUBLEBUF
+            
+            # First try to get the actual display info
+            info = pygame.display.Info()
+            actual_width, actual_height = info.current_w, info.current_h
+            logger.info(f"Actual display resolution: {actual_width}x{actual_height}")
+            logger.info(f"Requested resolution: {self.width}x{self.height}")
+            
+            # Use actual display resolution if it's different from config
+            if actual_width != self.width or actual_height != self.height:
+                logger.warning(f"Display resolution mismatch! Using actual: {actual_width}x{actual_height}")
+                self.width = actual_width
+                self.height = actual_height
+            
             self.screen = pygame.display.set_mode((self.width, self.height), flags)
             pygame.display.set_caption("RPIFrame Photo Display")
             
@@ -154,29 +201,101 @@ class DisplayManager:
             if self.rotation != 0:
                 pil_image = pil_image.rotate(-self.rotation, expand=True)
             
-            # Calculate scaling based on fit mode
-            img_ratio = pil_image.width / pil_image.height
+            # Get original dimensions BEFORE any squishing
+            orig_width, orig_height = pil_image.size
+            img_ratio = orig_width / orig_height
             display_ratio = self.width / self.height
             
-            if self.fit_mode == "cover":
-                # Fill entire screen, crop if necessary
-                if img_ratio > display_ratio:
-                    new_height = self.height
-                    new_width = int(self.height * img_ratio)
-                else:
-                    new_width = self.width
-                    new_height = int(self.width / img_ratio)
-            else:  # contain (default)
-                # Fit within screen, show black bars if necessary
-                if img_ratio > display_ratio:
-                    new_width = self.width
-                    new_height = int(self.width / img_ratio)
-                else:
-                    new_height = self.height
-                    new_width = int(self.height * img_ratio)
+            logger.info(f"Original image size: {orig_width}x{orig_height} (ratio: {img_ratio:.3f})")
+            logger.info(f"Display ratio: {display_ratio:.3f}")
             
-            # Resize image
-            pil_image = pil_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            logger.info(f"Processing image: {orig_width}x{orig_height} (ratio: {img_ratio:.2f}) for display: {self.width}x{self.height} (ratio: {display_ratio:.2f})")
+            
+            if self.fit_mode == "cover":
+                # COVER MODE: Fill entire screen with proper centering
+                # Step 1: Determine center crop area based on ORIGINAL image dimensions
+                
+                if img_ratio > display_ratio:
+                    # Image is wider than display ratio - crop horizontally (keep full height)
+                    target_width = int(orig_height * display_ratio)
+                    target_height = orig_height
+                    crop_left = (orig_width - target_width) // 2
+                    crop_top = 0
+                else:
+                    # Image is taller than display ratio - crop vertically (keep full width)  
+                    target_width = orig_width
+                    target_height = int(orig_width / display_ratio)
+                    crop_left = 0
+                    crop_top = (orig_height - target_height) // 2
+                
+                crop_right = crop_left + target_width
+                crop_bottom = crop_top + target_height
+                
+                logger.info(f"Step 1 - Center crop based on original: ({crop_left}, {crop_top}, {crop_right}, {crop_bottom})")
+                logger.info(f"Cropping from {orig_width}x{orig_height} to {target_width}x{target_height}")
+                
+                # Apply the center crop
+                pil_image = pil_image.crop((crop_left, crop_top, crop_right, crop_bottom))
+                
+                # Step 2: Apply counter-squish to the cropped image
+                squish_factor = 0.9
+                squished_width = int(pil_image.size[0] * squish_factor)
+                squished_height = pil_image.size[1]
+                
+                logger.info(f"Step 2 - Counter-squish: {pil_image.size[0]}x{pil_image.size[1]} → {squished_width}x{squished_height} (factor: {squish_factor})")
+                
+                pil_image = pil_image.resize((squished_width, squished_height), Image.Resampling.LANCZOS)
+                
+                # Step 3: Scale to final display size
+                final_scale_x = self.width / squished_width
+                final_scale_y = self.height / squished_height
+                final_scale = max(final_scale_x, final_scale_y)  # Ensure we fill the screen
+                
+                final_width = int(squished_width * final_scale)
+                final_height = int(squished_height * final_scale)
+                
+                logger.info(f"Step 3 - Final scale: {final_scale:.3f}, Final size: {final_width}x{final_height}")
+                
+                pil_image = pil_image.resize((final_width, final_height), Image.Resampling.LANCZOS)
+                
+                # Step 4: Final crop to exact display size if needed
+                if final_width > self.width or final_height > self.height:
+                    final_crop_left = max(0, (final_width - self.width) // 2)
+                    final_crop_top = max(0, (final_height - self.height) // 2)
+                    final_crop_right = final_crop_left + self.width
+                    final_crop_bottom = final_crop_top + self.height
+                    
+                    logger.info(f"Step 4 - Final crop: ({final_crop_left}, {final_crop_top}, {final_crop_right}, {final_crop_bottom})")
+                    pil_image = pil_image.crop((final_crop_left, final_crop_top, final_crop_right, final_crop_bottom))
+                
+                # Position at top-left
+                x, y = 0, 0
+                
+            else:  # contain (default)
+                # CONTAIN MODE: Fit within screen, show black bars if necessary, maintain aspect ratio
+                scale_for_width = self.width / orig_width
+                scale_for_height = self.height / orig_height
+                
+                logger.info(f"Scale factors: width={scale_for_width:.6f}, height={scale_for_height:.6f}")
+                
+                # Use the SMALLER scale factor to ensure we fit within the screen
+                scale_factor = min(scale_for_width, scale_for_height)
+                logger.info(f"Using min scale factor: {scale_factor:.6f}")
+                
+                new_width = int(orig_width * scale_factor)
+                new_height = int(orig_height * scale_factor)
+                
+                logger.info(f"Scaled dimensions: {new_width}x{new_height}")
+                
+                # Resize image
+                pil_image = pil_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                
+                # Calculate position to center image
+                x = (self.width - new_width) // 2
+                y = (self.height - new_height) // 2
+                
+                logger.info(f"Centering at position: ({x}, {y})")
+                logger.info(f"Black bars: left/right={x}px, top/bottom={y}px")
             
             # Convert to pygame surface
             if pil_image.mode == 'RGBA':
@@ -186,9 +305,9 @@ class DisplayManager:
                 image_str = pil_image.tobytes()
                 pygame_image = pygame.image.fromstring(image_str, pil_image.size, 'RGB')
             
-            # Calculate position to center image
-            x = (self.width - new_width) // 2
-            y = (self.height - new_height) // 2
+            # Verify final image dimensions match what we expect
+            final_size = pygame_image.get_size()
+            logger.info(f"Final pygame surface size: {final_size[0]}x{final_size[1]}, position: ({x}, {y})")
             
             return pygame_image, (x, y)
             
@@ -204,15 +323,30 @@ class DisplayManager:
                 return False
             
             image_surface, position = result
+            surface_size = image_surface.get_size()
+            screen_size = self.screen.get_size()
+            
+            logger.info(f"Screen size: {screen_size}, Image surface size: {surface_size}, Position: {position}")
+            
+            # Verify sizes match expectations
+            if surface_size != (self.width, self.height):
+                logger.warning(f"Size mismatch! Surface: {surface_size}, Expected: {(self.width, self.height)}")
             
             # Clear screen
             self.screen.fill((0, 0, 0))
             
-            # Draw image
+            # Draw image - NO scaling, direct blit
             self.screen.blit(image_surface, position)
             
             # Update display
             pygame.display.flip()
+            
+            # Update current photo indicator for web interface
+            try:
+                current_file = Path('/tmp/rpiframe_current_photo')
+                current_file.write_text(Path(photo_path).name)
+            except Exception as e:
+                logger.warning(f"Failed to update current photo indicator: {e}")
             
             logger.info(f"Displayed: {Path(photo_path).name}")
             return True
@@ -285,8 +419,9 @@ class DisplayManager:
             time.sleep(10)
             return
         
-        # Display first photo
+        # Display first photo (start with random photo)
         if self.photos:
+            self.current_photo_index = random.randint(0, len(self.photos) - 1)
             self.display_photo(self.photos[self.current_photo_index])
             self.last_photo_update = time.time()
         
@@ -325,14 +460,28 @@ class DisplayManager:
                                 self.handle_swipe(self.swipe_start_pos, event.pos)
                             self.swipe_start_pos = None
                 
+                # Check for next photo signal from web interface
+                signal_file = Path('/tmp/rpiframe_next_photo')
+                if signal_file.exists():
+                    try:
+                        signal_file.unlink()  # Remove the signal file
+                        self.next_photo()
+                        logger.info("Advanced to next photo via web interface")
+                    except Exception as e:
+                        logger.error(f"Error processing next photo signal: {e}")
+                
                 # Auto-advance slideshow
                 if current_time - self.last_photo_update >= self.slideshow_interval:
                     self.next_photo()
                 
                 # Reload photos periodically (every 5 minutes)
-                if int(current_time) % 300 == 0:
+                if not hasattr(self, 'last_photo_reload'):
+                    self.last_photo_reload = current_time
+                
+                if current_time - self.last_photo_reload >= 300:  # 5 minutes
                     old_count = len(self.photos)
                     self.load_photos()
+                    self.last_photo_reload = current_time
                     if len(self.photos) != old_count:
                         logger.info(f"Photo count changed: {old_count} -> {len(self.photos)}")
                         if not self.photos:

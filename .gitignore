@@ -1,1 +1,14 @@
 InkFrame/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+logs/
+*.log
+.DS_Store
+config.json
+photos/
+*.backup
+rpiframe_test*.log

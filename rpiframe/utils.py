@@ -108,14 +108,23 @@ def get_system_info() -> dict:
         except:
             pass
         
-        # Memory usage
+        # CPU and Memory usage
         try:
             import psutil
+            
+            # CPU usage (averaged over 1 second)
+            cpu_percent = psutil.cpu_percent(interval=1)
+            info["cpu_usage"] = {
+                "percent": cpu_percent
+            }
+            
+            # Memory usage
             memory = psutil.virtual_memory()
             info["memory_usage"] = {
                 "total": memory.total,
                 "used": memory.used,
-                "free": memory.available
+                "free": memory.available,
+                "percent": memory.percent
             }
         except ImportError:
             pass
