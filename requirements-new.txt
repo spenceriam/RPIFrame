@@ -1,0 +1,21 @@
+# RPIFrame - Digital Photo Frame Requirements
+# Updated and simplified dependency list
+
+# Core Dependencies
+Flask>=2.3.0,<4.0.0
+Werkzeug>=2.3.0,<4.0.0
+Pillow>=9.0.0,<11.0.0
+
+# Display (optional - only needed on Raspberry Pi)
+pygame>=2.1.0,<3.0.0
+
+# System monitoring (optional)
+psutil>=5.8.0,<6.0.0
+
+# Production server (optional)
+gunicorn>=20.1.0,<22.0.0
+
+# Development tools (optional)
+# pytest>=7.0.0,<8.0.0
+# black>=23.0.0,<24.0.0
+# flake8>=6.0.0,<7.0.0
