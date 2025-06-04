@@ -9,6 +9,7 @@ import signal
 import logging
 import threading
 import time
+import socket
 from pathlib import Path
 from multiprocessing import Process, Queue
 from typing import Optional
@@ -43,11 +44,61 @@ class PhotoFrame:
         # Create required directories
         create_directories(self.config)
         
+        # Check for existing processes
+        self._check_existing_processes()
+        
         # Setup signal handlers
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
         
         logger.info("PhotoFrame initialized")
+    
+    def _check_existing_processes(self) -> None:
+        """Check for existing RPIFrame processes and handle port conflicts"""
+        import subprocess
+        import socket
+        
+        # Check if port is available
+        port = self.config.web.get("port", 5000)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            sock.bind(('', port))
+            sock.close()
+            logger.debug(f"Port {port} is available")
+        except OSError as e:
+            logger.warning(f"Port {port} is already in use")
+            
+            # Try to find what's using the port
+            try:
+                result = subprocess.run(['lsof', '-i', f':{port}'], 
+                                      capture_output=True, text=True)
+                if result.stdout:
+                    logger.warning(f"Process using port {port}:\n{result.stdout}")
+            except:
+                pass
+            
+            # Ask user what to do
+            if not self.display_only:
+                logger.error(f"Port {port} is already in use. Please either:")
+                logger.error(f"1. Stop the other process using port {port}")
+                logger.error(f"2. Change the port in config.json")
+                logger.error(f"3. Run with --display-only flag")
+                sys.exit(1)
+        
+        # Check for existing RPIFrame processes
+        try:
+            result = subprocess.run(['pgrep', '-f', 'rpiframe|run.py|display_slideshow.py'], 
+                                  capture_output=True, text=True)
+            if result.stdout:
+                pids = result.stdout.strip().split('\n')
+                own_pid = str(os.getpid())
+                other_pids = [pid for pid in pids if pid and pid != own_pid]
+                
+                if other_pids:
+                    logger.warning(f"Found existing RPIFrame processes: {', '.join(other_pids)}")
+                    logger.info("Consider stopping them with: sudo kill " + ' '.join(other_pids))
+        except:
+            pass
     
     def _signal_handler(self, signum: int, frame) -> None:
         """Handle shutdown signals gracefully"""
